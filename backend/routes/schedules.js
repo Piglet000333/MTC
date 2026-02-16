@@ -11,7 +11,7 @@ router.get('/', async (req, res) => {
 
   // Dynamic count aggregation
   const counts = await Registration.aggregate([
-    { $match: { scheduleId: { $in: ids }, status: { $ne: 'cancelled' } } },
+    { $match: { scheduleId: { $in: ids }, status: { $in: ['active', 'pending'] } } },
     // Lookup student to ensure they still exist (handles manual DB deletions)
     {
       $lookup: {
@@ -42,6 +42,9 @@ router.post('/', requireAdmin, async (req, res) => {
     if (req.body.capacity !== undefined && parseInt(req.body.capacity) < 0) {
       return res.status(400).json({ error: 'Capacity cannot be negative' });
     }
+    if (req.body.price !== undefined && parseFloat(req.body.price) < 0) {
+      return res.status(400).json({ error: 'Price cannot be negative' });
+    }
 
     const schedule = await Schedule.create(req.body);
     res.status(201).json(schedule);
@@ -58,6 +61,9 @@ router.put('/:id', requireAdmin, async (req, res) => {
     // Validation: Capacity cannot be negative
     if (req.body.capacity !== undefined && parseInt(req.body.capacity) < 0) {
       return res.status(400).json({ error: 'Capacity cannot be negative' });
+    }
+    if (req.body.price !== undefined && parseFloat(req.body.price) < 0) {
+      return res.status(400).json({ error: 'Price cannot be negative' });
     }
 
     const schedule = await Schedule.findByIdAndUpdate(req.params.id, req.body, { new: true });

@@ -131,6 +131,7 @@ const CustomDropdown = ({ options, value, onChange, placeholder, darkMode, icon:
                     }`}
                   >
                     <div className="flex items-center gap-2">
+                      {option.icon && <option.icon className={`w-4 h-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />}
                       {option.color && <span className={`w-2 h-2 rounded-full ${option.color}`} />}
                       {option.label}
                     </div>

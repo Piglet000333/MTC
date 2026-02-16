@@ -8,10 +8,31 @@ const registrationSchema = new mongoose.Schema(
     status: { 
       type: String, 
       default: 'pending',
-      enum: ['active', 'cancelled', 'completed', 'pending', 'dropped'] 
-    }, // active, cancelled, completed, pending, dropped
+      enum: ['active', 'cancelled', 'completed', 'pending', 'dropped', 'rejected'] 
+    }, // active, cancelled, completed, pending, dropped, rejected
+    
+    // Payment Info
+    payment: {
+      isOnline: { type: Boolean, default: false }, // true = Online, false = No/On-site
+      senderGcashNumber: {
+        type: String,
+        validate: {
+          validator: function(v) {
+            if (this.payment && this.payment.isOnline) {
+              return /^\d{11}$/.test(v);
+            }
+            return true;
+          },
+          message: 'Sender GCash number must be exactly 11 digits'
+        }
+      },
+      referenceNumber: String,
+      proofOfPayment: String // Base64 string of the image
+    },
+
     remarks: { type: String, trim: true }, // Reason for cancellation or other status changes
-    cancelledAt: { type: Date }
+    cancelledAt: { type: Date },
+    rejectionCount: { type: Number, default: 0, min: 0 }
   },
   { timestamps: true }
 );
@@ -20,6 +41,9 @@ registrationSchema.index({ studentId: 1, scheduleId: 1 }, { unique: true });
 
 // Prevent excess registration over capacity
 registrationSchema.pre('save', async function(next) {
+  if (this.status) {
+    this.status = String(this.status).toLowerCase();
+  }
   if (this.isNew) {
     try {
       const Schedule = mongoose.model('Schedule');
@@ -31,7 +55,7 @@ registrationSchema.pre('save', async function(next) {
 
       const count = await this.constructor.countDocuments({
         scheduleId: this.scheduleId,
-        status: { $ne: 'cancelled' }
+        status: { $in: ['active', 'pending'] }
       });
 
       if (count >= schedule.capacity) {

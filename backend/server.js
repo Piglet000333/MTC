@@ -23,6 +23,7 @@ app.use('/api/system-settings', require('./routes/systemSettings'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/payment', require('./routes/payment'));
+app.use('/api/announcements', require('./routes/announcements'));
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -31,13 +32,18 @@ app.get('/api/health', (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 
-// Connect to DB before listening
-connectDB().then((connected) => {
-  if (!connected) {
-    console.error("❌ Failed to connect to DB. Server exiting...");
-    process.exit(1);
-  }
-  app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
+// Export app for Vercel
+module.exports = app;
+
+// Connect to DB before listening (only if run directly)
+if (require.main === module) {
+  connectDB().then((connected) => {
+    if (!connected) {
+      console.error("❌ Failed to connect to DB. Server exiting...");
+      process.exit(1);
+    }
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+    });
   });
-});
+}

@@ -1,6 +1,10 @@
 const mongoose = require('mongoose');
 
 const connectDB = async () => {
+  if (mongoose.connection.readyState >= 1) {
+    return true;
+  }
+
   const primary = process.env.MONGODB_URI;
   const fallback = process.env.MONGODB_DIRECT_URI;
 

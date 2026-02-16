@@ -24,6 +24,12 @@ const scheduleSchema = new mongoose.Schema({
     required: [true, 'Enter Capacity'],
     min: [0, 'Capacity cannot be negative']
   },
+  price: {
+    type: Number,
+    required: [true, 'Enter Price'],
+    min: [0, 'Price cannot be negative'],
+    default: 0
+  },
   registered: { 
     type: Number, 
     default: 0,

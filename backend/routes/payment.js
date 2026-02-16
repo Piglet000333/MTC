@@ -38,8 +38,8 @@ router.post('/create-checkout-session', async (req, res) => {
           show_description: true,
           show_line_items: true,
           description: description || 'Assessment Fee',
-          success_url: 'http://localhost:3000/student?payment_status=success&ref=PM-{payment_intent_id}',
-          cancel_url: 'http://localhost:3000/student?payment_status=cancelled'
+          success_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/student?payment_status=success&ref=PM-{payment_intent_id}`,
+          cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/student?payment_status=cancelled`
         }
       }
     };
@@ -150,7 +150,7 @@ router.post('/create-qr', async (req, res) => {
         data: {
             attributes: {
                 payment_method: pmId,
-                return_url: 'http://localhost:3000/student' // Not used for QR scan but required
+                return_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/student` // Not used for QR scan but required
             }
         }
     };

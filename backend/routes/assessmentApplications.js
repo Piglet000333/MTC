@@ -26,6 +26,27 @@ router.post('/', requireStudentOrAdmin, async (req, res) => {
 
     }
 
+    // Check for active applications
+    const existingActive = await AssessmentApplication.findOne({
+      studentId,
+      assessmentId,
+      status: { $in: ['Pending', 'Approved'] }
+    }).lean();
+    if (existingActive) {
+      return res.status(400).json({ error: 'You already have an active application for this assessment.' });
+    }
+
+    // Check rejection limit (2 times max)
+    const rejectionCount = await AssessmentApplication.countDocuments({
+      studentId,
+      assessmentId,
+      status: 'Rejected'
+    });
+
+    if (rejectionCount >= 2) {
+      return res.status(403).json({ error: 'Please contact the admin or go to our office.' });
+    }
+
     const application = await AssessmentApplication.create({ ...req.body, studentId });
 
     // Create notification
@@ -77,6 +98,10 @@ router.get('/', requireAdmin, async (req, res) => {
 router.put('/:id', requireAdmin, async (req, res) => {
   try {
     const { status, remarks } = req.body;
+
+    if (status === 'Rejected' && (!remarks || !String(remarks).trim())) {
+      return res.status(400).json({ error: 'Rejection reason is required.' });
+    }
     
     const application = await AssessmentApplication.findById(req.params.id);
     if (!application) {

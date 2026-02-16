@@ -32,32 +32,71 @@ router.get('/student/:studentId', requireStudentOrAdmin, async (req, res) => {
 // Create registration
 router.post('/', requireStudentOrAdmin, async (req, res) => {
   try {
-    const { studentId, scheduleId, termsAccepted } = req.body;
+    const { studentId, scheduleId, termsAccepted, payment } = req.body;
     const effectiveStudentId = req.auth.role === 'student' ? req.auth.userId : studentId;
     if (req.auth.role === 'student' && studentId && String(studentId) !== String(effectiveStudentId)) {
       return res.status(403).json({ error: 'You can only create registrations for yourself' });
     }
     
-    // Check if already registered
-    const existing = await Registration.findOne({ 
-      studentId: effectiveStudentId, 
-      scheduleId,
-      status: { $in: ['active', 'pending'] }
-    });
-    
-    if (existing) {
-      return res.status(400).json({ error: 'Student already registered for this schedule' });
-    }
-
     // Determine status: Admin -> active, Student -> pending
     const initialStatus = req.auth.role === 'admin' ? 'active' : 'pending';
 
-    const reg = await Registration.create({
-      studentId: effectiveStudentId,
-      scheduleId,
-      termsAccepted,
-      status: initialStatus
-    });
+    const existingAny = await Registration.findOne({ studentId: effectiveStudentId, scheduleId });
+
+    let reg;
+    if (existingAny) {
+      const existingStatus = String(existingAny.status || '').toLowerCase();
+
+      if (['active', 'pending', 'completed'].includes(existingStatus)) {
+        return res.status(400).json({ error: 'Student already registered for this schedule' });
+      }
+
+      const rejectionCount = Number(existingAny.rejectionCount || 0);
+      if (rejectionCount >= 3) {
+        return res.status(403).json({ error: 'Oops! It looks like you have already attempted this action twice. For further assistance, please reach out to our admin team or visit our office. We are here to help.' });
+      }
+
+      const schedule = await Schedule.findById(scheduleId);
+      if (!schedule) {
+        return res.status(400).json({ error: 'Schedule not found' });
+      }
+
+      const occupyingCount = await Registration.countDocuments({
+        scheduleId,
+        status: { $in: ['active', 'pending'] }
+      });
+
+      if (occupyingCount >= schedule.capacity) {
+        return res.status(400).json({ error: 'Schedule is full. Capacity reached.' });
+      }
+
+      existingAny.status = initialStatus;
+      existingAny.termsAccepted = !!termsAccepted;
+      existingAny.payment = payment;
+      existingAny.remarks = undefined;
+      existingAny.cancelledAt = undefined;
+
+      const oldCounted = ['active', 'pending'].includes(existingStatus);
+      const newCounted = ['active', 'pending'].includes(initialStatus);
+      await existingAny.save();
+
+      if (!oldCounted && newCounted) {
+        await Schedule.findByIdAndUpdate(scheduleId, { $inc: { registered: 1 } });
+      }
+
+      reg = existingAny;
+    } else {
+      reg = await Registration.create({
+        studentId: effectiveStudentId,
+        scheduleId,
+        termsAccepted,
+        status: initialStatus,
+        payment
+      });
+
+      // Update Schedule registered count
+      await Schedule.findByIdAndUpdate(scheduleId, { $inc: { registered: 1 } });
+    }
     
     // Create notification
     try {
@@ -72,11 +111,8 @@ router.post('/', requireStudentOrAdmin, async (req, res) => {
       console.error('Failed to create notification:', notifyErr);
       // Don't fail the registration if notification fails
     }
-
-    // Update Schedule registered count
-    await Schedule.findByIdAndUpdate(scheduleId, { $inc: { registered: 1 } });
-
-    res.status(201).json(reg);
+    
+    res.status(existingAny ? 200 : 201).json(reg);
   } catch (err) {
     if (err.code === 11000) {
       return res.status(400).json({ error: 'Student already registered for this schedule' });
@@ -95,8 +131,12 @@ router.patch('/:id/cancel', requireStudentOrAdmin, async (req, res) => {
       return res.status(403).json({ error: 'You can only cancel your own registration' });
     }
 
+    const oldStatus = String(reg.status || '').toLowerCase();
     reg.status = 'cancelled';
     reg.cancelledAt = new Date();
+    if (!['cancelled', 'dropped', 'rejected'].includes(oldStatus)) {
+      reg.rejectionCount = Number(reg.rejectionCount || 0) + 1;
+    }
     await reg.save();
 
     // Decrement Schedule registered count
@@ -127,8 +167,12 @@ router.post('/cancel', requireAdmin, async (req, res) => {
 
     if (!reg) return res.status(404).json({ error: 'No active registration found' });
 
+    const oldStatus = String(reg.status || '').toLowerCase();
     reg.status = 'cancelled';
     reg.cancelledAt = new Date();
+    if (!['cancelled', 'dropped', 'rejected'].includes(oldStatus)) {
+      reg.rejectionCount = Number(reg.rejectionCount || 0) + 1;
+    }
     await reg.save();
 
     // Decrement Schedule registered count
@@ -151,10 +195,21 @@ router.put('/:id', requireAdmin, async (req, res) => {
 
     const oldScheduleId = reg.scheduleId;
     const oldStatus = reg.status;
+    const oldStatusLower = String(oldStatus || '').toLowerCase();
+    const nextStatusLower = status ? String(status).toLowerCase() : oldStatusLower;
 
     if (scheduleId) reg.scheduleId = scheduleId;
     if (status) reg.status = status;
     if (remarks !== undefined) reg.remarks = remarks;
+
+    if (
+      status &&
+      oldStatusLower !== nextStatusLower &&
+      ['cancelled', 'dropped', 'rejected'].includes(nextStatusLower) &&
+      !['cancelled', 'dropped', 'rejected'].includes(oldStatusLower)
+    ) {
+      reg.rejectionCount = Number(reg.rejectionCount || 0) + 1;
+    }
     
     await reg.save();
 
@@ -185,22 +240,26 @@ router.put('/:id', requireAdmin, async (req, res) => {
     const newScheduleId = reg.scheduleId;
     const newStatus = reg.status;
 
+    const countedStatuses = ['active', 'pending'];
+
     // 1. If schedule changed
     if (oldScheduleId && newScheduleId && oldScheduleId.toString() !== newScheduleId.toString()) {
-        if (oldStatus === 'active') {
-             await Schedule.findByIdAndUpdate(oldScheduleId, { $inc: { registered: -1 } });
-        }
-        if (newStatus === 'active') {
-             await Schedule.findByIdAndUpdate(newScheduleId, { $inc: { registered: 1 } });
-        }
+      if (countedStatuses.includes(String(oldStatus).toLowerCase())) {
+        await Schedule.findByIdAndUpdate(oldScheduleId, { $inc: { registered: -1 } });
+      }
+      if (countedStatuses.includes(String(newStatus).toLowerCase())) {
+        await Schedule.findByIdAndUpdate(newScheduleId, { $inc: { registered: 1 } });
+      }
     } 
     // 2. If status changed (same schedule)
     else if (oldStatus !== newStatus && newScheduleId) {
-        if (oldStatus === 'active' && newStatus !== 'active') {
-             await Schedule.findByIdAndUpdate(newScheduleId, { $inc: { registered: -1 } });
-        } else if (oldStatus !== 'active' && newStatus === 'active') {
-             await Schedule.findByIdAndUpdate(newScheduleId, { $inc: { registered: 1 } });
-        }
+      const oldCounted = countedStatuses.includes(String(oldStatus).toLowerCase());
+      const newCounted = countedStatuses.includes(String(newStatus).toLowerCase());
+      if (oldCounted && !newCounted) {
+        await Schedule.findByIdAndUpdate(newScheduleId, { $inc: { registered: -1 } });
+      } else if (!oldCounted && newCounted) {
+        await Schedule.findByIdAndUpdate(newScheduleId, { $inc: { registered: 1 } });
+      }
     }
 
     res.json(reg);

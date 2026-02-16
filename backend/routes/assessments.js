@@ -10,7 +10,7 @@ router.get('/', async (req, res) => {
     const assessmentsWithAvailability = await Promise.all(assessments.map(async (assessment) => {
       const enrolledCount = await AssessmentApplication.countDocuments({
         assessmentId: assessment._id,
-        status: { $nin: ['Rejected', 'Cancelled'] }
+        status: { $in: ['Pending', 'Approved'] }
       });
       
       return {

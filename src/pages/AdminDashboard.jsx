@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 import { motion, AnimatePresence } from "framer-motion";
-import { Home, UserPlus, Calendar, Award, Plus, Edit, Trash2, Search, LogOut, X, Eye, Settings, Upload, Save, CreditCard, Image as ImageIcon, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Moon, Sun, Bell, User, Users, Lock, Camera, Menu, Download, BookOpen, Mail, Phone, TrendingUp, Maximize2, Hash } from 'lucide-react'; 
+import { Home, UserPlus, Calendar, Clock, Award, Plus, Edit, Trash2, Search, LogOut, X, Eye, Settings, Upload, Save, CreditCard, Image as ImageIcon, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Moon, Sun, Bell, User, Users, Lock, Camera, Menu, Download, BookOpen, Mail, Phone, TrendingUp, Maximize2, Hash, Megaphone, Loader2 } from 'lucide-react'; 
 import { useNavigate } from 'react-router-dom';
 import CustomDatePicker from '../components/CustomDatePicker';
 import CustomDropdown from '../components/CustomDropdown';
+import MuiTimePicker from '../components/MuiTimePicker';
 import AdminStats from '../components/admin/AdminStats';
 import RecentStudents from '../components/admin/RecentStudents';
 import StudentManager from '../components/admin/StudentManager';
@@ -15,7 +16,7 @@ const ASSESSMENT_APPS_PER_PAGE = 10;
 const AdminDashboard = () => { 
   const navigate = useNavigate();
   const [activeSection, setActiveSection] = useState('dashboard'); 
-  const [activeSubSection, setActiveSubSection] = useState(''); 
+  const [activeSubSection, setActiveSubSection] = useState('schedules'); // schedules, students, view-student, student-form, applications, assessment-form
   const [scheduleSearchTerm, setScheduleSearchTerm] = useState(''); // New search state for schedules
   const [assessmentAppFilter, setAssessmentAppFilter] = useState(''); // Filter by Assessment
   const [assessmentAppStatusFilter, setAssessmentAppStatusFilter] = useState(''); // Filter by Status
@@ -31,6 +32,7 @@ const AdminDashboard = () => {
   const [assessments, setAssessments] = useState([]);
   const [registrations, setRegistrations] = useState([]);
   const [assessmentApps, setAssessmentApps] = useState([]);
+  const [announcements, setAnnouncements] = useState([]); // New state for announcements
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -39,7 +41,13 @@ const AdminDashboard = () => {
   const [viewingApp, setViewingApp] = useState(null);
   const [viewingScheduleStudents, setViewingScheduleStudents] = useState(null); // State for viewing enrolled students
   const [showScheduleStudentsModal, setShowScheduleStudentsModal] = useState(false); // State for modal visibility
-  const [scheduleForm, setScheduleForm] = useState({ courseId: '', courseTitle: '', trainingDate: '', capacity: '', status: 'Active' });
+  const [showAnnouncementModal, setShowAnnouncementModal] = useState(false); // State for announcement modal
+  const [announcementForm, setAnnouncementForm] = useState({ title: '', content: '', priority: 'normal', category: '', publishDate: '', publishTime: '', expiryDate: '', expiryTime: '' }); // Form state
+  const [announcementSearch, setAnnouncementSearch] = useState(''); // Announcement search term
+  const [announcementCategoryFilter, setAnnouncementCategoryFilter] = useState('All'); // Announcement category filter
+  const [announcementStatusFilter, setAnnouncementStatusFilter] = useState('All'); // Status filter: All | Active | Scheduled | Expired
+  const [postingAnnouncement, setPostingAnnouncement] = useState(false);
+  const [scheduleForm, setScheduleForm] = useState({ courseId: '', courseTitle: '', trainingDate: '', capacity: '', price: '', status: 'Active' });
   const [assessmentForm, setAssessmentForm] = useState({ assessmentId: '', title: '', fee: '', status: 'Active', dropReason: '' });
   const [assessmentSubTab, setAssessmentSubTab] = useState('active'); // 'active' | 'history'
   const [scheduleSubTab, setScheduleSubTab] = useState('active'); // 'active' | 'history'
@@ -75,6 +83,7 @@ const AdminDashboard = () => {
     appId: null,
     regId: null, // Added for schedule registrations
     type: 'assessment', // 'assessment' or 'registration'
+    statusToSet: 'Drop',
     reason: '2 Absences', // Default reason
     customReason: ''
   });
@@ -124,6 +133,7 @@ const AdminDashboard = () => {
 
   // Initial Load
   const [zoomedImage, setZoomedImage] = useState(null);
+  const [viewingPendingRegistration, setViewingPendingRegistration] = useState(null);
   
   const loadNotifications = React.useCallback(async () => {
     try {
@@ -165,13 +175,14 @@ const AdminDashboard = () => {
     if (!isBackground) setLoading(true);
     try {
       const timestamp = new Date().getTime();
-      const [studentsRes, schedulesRes, assessmentsRes, registrationsRes, appsRes, settingsRes] = await Promise.all([
+      const [studentsRes, schedulesRes, assessmentsRes, registrationsRes, appsRes, settingsRes, announcementsRes] = await Promise.all([
         authedFetch(`/api/students?t=${timestamp}`),
         authedFetch(`/api/schedules?t=${timestamp}`),
         authedFetch(`/api/assessments?t=${timestamp}`),
         authedFetch(`/api/registrations?t=${timestamp}`),
         authedFetch(`/api/assessment-applications?t=${timestamp}`),
-        authedFetch(`/api/system-settings/payment_config?t=${timestamp}`)
+        authedFetch(`/api/system-settings/payment_config?t=${timestamp}`),
+        authedFetch(`/api/announcements?t=${timestamp}`)
       ]);
 
       if (!studentsRes.ok) throw new Error(`Failed to load students: ${studentsRes.status} ${studentsRes.statusText}`);
@@ -179,14 +190,16 @@ const AdminDashboard = () => {
       if (!assessmentsRes.ok) throw new Error(`Failed to load assessments: ${assessmentsRes.status} ${assessmentsRes.statusText}`);
       if (!registrationsRes.ok) throw new Error(`Failed to load registrations: ${registrationsRes.status} ${registrationsRes.statusText}`);
       if (!appsRes.ok) throw new Error(`Failed to load applications: ${appsRes.status} ${appsRes.statusText}`);
+      if (!announcementsRes.ok) throw new Error(`Failed to load announcements`);
 
-      const [sData, schData, aData, rData, appData, setConf] = await Promise.all([
+      const [sData, schData, aData, rData, appData, setConf, annData] = await Promise.all([
         studentsRes.json(),
         schedulesRes.json(),
         assessmentsRes.json(),
         registrationsRes.json(),
         appsRes.json(),
-        settingsRes.ok ? settingsRes.json() : null
+        settingsRes.ok ? settingsRes.json() : null,
+        announcementsRes.json()
       ]);
 
       setStudents(sData);
@@ -194,6 +207,7 @@ const AdminDashboard = () => {
       setAssessments(aData);
       setRegistrations(rData);
       setAssessmentApps(appData);
+      setAnnouncements(annData);
       if (setConf && setConf.value) {
         setPaymentConfig(setConf.value);
       }
@@ -369,10 +383,15 @@ const AdminDashboard = () => {
       const url = editingItem ? `/api/schedules/${editingItem._id}` : '/api/schedules';
       const method = editingItem ? 'PUT' : 'POST';
       
+      const payload = { 
+        ...scheduleForm, 
+        capacity: scheduleForm.capacity === '' ? 0 : parseInt(scheduleForm.capacity, 10),
+        price: scheduleForm.price === '' ? 0 : parseFloat(scheduleForm.price)
+      };
       const res = await authedFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(scheduleForm)
+        body: JSON.stringify(payload)
       });
       
       if (!res.ok) {
@@ -388,7 +407,7 @@ const AdminDashboard = () => {
         onConfirm: null
       });
       setEditingItem(null);
-      setScheduleForm({ courseId: '', courseTitle: '', trainingDate: '', capacity: '' });
+      setScheduleForm({ courseId: '', courseTitle: '', trainingDate: '', capacity: '', price: '', status: 'Active' });
       setActiveSubSection('');
       loadData();
     } catch (e) {
@@ -460,6 +479,7 @@ const AdminDashboard = () => {
       courseTitle: schedule.courseTitle || '',
       trainingDate: schedule.trainingDate ? schedule.trainingDate.split('T')[0] : '',
       capacity: schedule.capacity || '',
+      price: (schedule.price !== undefined && schedule.price !== null) ? String(schedule.price) : '',
       status: schedule.status || 'Active'
     });
     setActiveSubSection('schedule-form');
@@ -1204,7 +1224,16 @@ const AdminDashboard = () => {
                 {viewingApp.status === 'Pending' && (
                   <>
                     <button 
-                      onClick={() => handleUpdateAppStatus(viewingApp._id, 'Rejected')}
+                      onClick={() => {
+                        setDropReasonModal({
+                          isOpen: true,
+                          appId: viewingApp._id,
+                          type: 'assessment',
+                          statusToSet: 'Rejected',
+                          reason: 'Incomplete Requirements',
+                          customReason: ''
+                        });
+                      }}
                       className={`flex-1 sm:flex-none px-6 py-3 rounded-xl font-bold text-sm border transition-all ${
                         darkMode
                            ? 'border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white'
@@ -1421,6 +1450,7 @@ const AdminDashboard = () => {
                       <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${darkMode ? 'text-gray-300' : 'text-gray-500'}`}>Name</th>
                       <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${darkMode ? 'text-gray-300' : 'text-gray-500'}`}>Email</th>
                       <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${darkMode ? 'text-gray-300' : 'text-gray-500'}`}>Mobile</th>
+                      <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${darkMode ? 'text-gray-300' : 'text-gray-500'}`}>Payment</th>
                       <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${darkMode ? 'text-gray-300' : 'text-gray-500'}`}>Registration Status</th>
                     </tr>
                   </thead>
@@ -1429,21 +1459,28 @@ const AdminDashboard = () => {
                       .filter(student => {
                          // Check if there is an active registration for this student and schedule
                          return registrations.some(reg => 
-                           (reg.scheduleId?._id === viewingScheduleStudents._id || reg.scheduleId === viewingScheduleStudents._id) &&
-                           (reg.studentId?._id === student._id || reg.studentId === student._id) &&
-                           !['cancelled', 'completed', 'dropped'].includes(reg.status)
+                           String(reg.scheduleId?._id || reg.scheduleId) === String(viewingScheduleStudents._id) &&
+                           String(reg.studentId?._id || reg.studentId) === String(student._id) &&
+                           String(reg.status || '').toLowerCase() === 'active'
                          );
                       })
                       .length > 0 ? (
                         students
                           .filter(student => {
                              return registrations.some(reg => 
-                               (reg.scheduleId?._id === viewingScheduleStudents._id || reg.scheduleId === viewingScheduleStudents._id) &&
-                               (reg.studentId?._id === student._id || reg.studentId === student._id) &&
-                               !['cancelled', 'completed', 'dropped'].includes(reg.status?.toLowerCase())
+                               String(reg.scheduleId?._id || reg.scheduleId) === String(viewingScheduleStudents._id) &&
+                               String(reg.studentId?._id || reg.studentId) === String(student._id) &&
+                               String(reg.status || '').toLowerCase() === 'active'
                              );
                           })
-                          .map((student) => (
+                          .map((student) => {
+                            const reg = registrations.find(r => 
+                                String(r.studentId?._id || r.studentId) === String(student._id) && 
+                                String(r.scheduleId?._id || r.scheduleId) === String(viewingScheduleStudents._id) &&
+                                String(r.status || '').toLowerCase() === 'active'
+                            );
+                            
+                            return (
                             <tr key={student._id} className={darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}>
                               <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                                 {student.firstName} {student.middleName} {student.lastName}
@@ -1454,27 +1491,53 @@ const AdminDashboard = () => {
                               <td className={`px-6 py-4 whitespace-nowrap text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                                 {student.mobileNo}
                               </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                {reg ? (
+                                   <div className="flex flex-col gap-1.5 items-start">
+                                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${
+                                         reg.payment?.isOnline 
+                                           ? (darkMode ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' : 'bg-purple-50 text-purple-600 border-purple-200')
+                                           : (darkMode ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' : 'bg-orange-50 text-orange-600 border-orange-200')
+                                      }`}>
+                                         {reg.payment?.isOnline ? 'Online (GCash)' : 'Walk-in'}
+                                      </span>
+                                      
+                                      {reg.payment?.isOnline && (
+                                         <div className="flex flex-col gap-0.5">
+                                            <span className={`text-[10px] font-mono ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                               Ref: {reg.payment?.referenceNumber || 'N/A'}
+                                            </span>
+                                            {reg.payment?.proofOfPayment && (
+                                               <button 
+                                                 onClick={(e) => { e.stopPropagation(); setZoomedImage(reg.payment.proofOfPayment); }}
+                                                 className="text-xs text-blue-500 hover:text-blue-600 hover:underline flex items-center gap-1 font-medium mt-0.5"
+                                               >
+                                                 <Eye className="w-3 h-3" /> View Proof
+                                               </button>
+                                            )}
+                                         </div>
+                                      )}
+                                   </div>
+                                ) : (
+                                   <span className="text-gray-400 text-xs">N/A</span>
+                                )}
+                              </td>
                               <td className={`px-6 py-4 whitespace-nowrap text-sm`}>
                                 {/* Find registration status if available */}
                                 {(() => {
-                                  const reg = registrations.find(r => 
-                                    (r.studentId?._id === student._id || r.studentId === student._id) && 
-                                    (r.scheduleId?._id === viewingScheduleStudents._id || r.scheduleId === viewingScheduleStudents._id)
-                                  );
-                                  
                                   if (!reg) return <span className="text-gray-400">Not Registered</span>;
 
-                                  const currentStatus = reg.status || 'active';
+                                  const currentStatus = String(reg.status || 'active').toLowerCase();
                                   
                                   return (
                                     <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                                       <CustomDropdown
                                         options={[
-                                          { value: 'active', label: 'Active', color: 'bg-green-500' },
+                                          { value: 'active', label: 'Active (Approve)', color: 'bg-green-500' },
                                           { value: 'pending', label: 'Pending', color: 'bg-yellow-500' },
                                           { value: 'completed', label: 'Completed', color: 'bg-blue-500' },
                                           { value: 'dropped', label: 'Dropped', color: 'bg-orange-500' },
-                                          { value: 'cancelled', label: 'Cancelled', color: 'bg-red-500' }
+                                          { value: 'cancelled', label: 'Cancelled (Reject)', color: 'bg-red-500' }
                                         ]}
                                         value={currentStatus}
                                         onChange={(val) => {
@@ -1485,6 +1548,7 @@ const AdminDashboard = () => {
                                               appId: null,
                                               regId: reg._id,
                                               type: 'registration',
+                                          statusToSet: newStatus,
                                               reason: '2 Absences',
                                               customReason: ''
                                             });
@@ -1518,10 +1582,11 @@ const AdminDashboard = () => {
                                 })()}
                               </td>
                             </tr>
-                          ))
+                            );
+                          })
                       ) : (
                         <tr>
-                          <td colSpan="4" className={`px-6 py-8 text-center text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          <td colSpan="5" className={`px-6 py-8 text-center text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                             No students enrolled in this schedule.
                           </td>
                         </tr>
@@ -1688,7 +1753,7 @@ const AdminDashboard = () => {
       // So 'active' tab = List of Schedules.
       // 'history' tab = List of Students (Registrations).
       
-      return matchesSearch && !['Archived', 'Cancelled'].includes(schedule.status);
+      return matchesSearch && schedule.status === 'Active';
     });
 
     const renderStudentHistoryTable = () => (
@@ -1948,6 +2013,7 @@ const AdminDashboard = () => {
                 <th className={`px-8 py-5 text-left text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>ID</th>
                 <th className={`px-6 py-5 text-left text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Title</th>
                 <th className={`px-6 py-5 text-left text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Date</th>
+                <th className={`px-6 py-5 text-left text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Price</th>
                 <th className={`px-6 py-5 text-left text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Capacity</th>
                 <th className={`px-6 py-5 text-left text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Registered</th>
                 <th className={`px-6 py-5 text-left text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Status</th>
@@ -1971,9 +2037,15 @@ const AdminDashboard = () => {
                   <td className={`px-6 py-5 whitespace-nowrap text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                     {schedule.trainingDate ? new Date(schedule.trainingDate).toLocaleDateString() : '-'}
                   </td>
+                  <td className={`px-6 py-5 whitespace-nowrap text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    {typeof schedule.price === 'number' ? `₱${schedule.price.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '₱0.00'}
+                  </td>
                   <td className={`px-6 py-5 whitespace-nowrap text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{schedule.capacity}</td>
                   <td className={`px-6 py-5 whitespace-nowrap text-sm font-bold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
-                    {schedule.registered || 0}
+                    {registrations.filter((reg) => {
+                      const scheduleId = reg.scheduleId?._id || reg.scheduleId;
+                      return String(scheduleId) === String(schedule._id) && String(reg.status || '').toLowerCase() === 'active';
+                    }).length}
                   </td>
                   <td className="px-6 py-5 whitespace-nowrap text-sm">
                     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${
@@ -2043,7 +2115,7 @@ const AdminDashboard = () => {
       // Count applications for this assessment
       const apps = assessmentApps.filter(app => {
          const appId = app.assessmentId?._id || app.assessmentId;
-         return appId === assessment._id && app.status !== 'Rejected' && app.status !== 'Cancelled';
+         return appId === assessment._id && ['Pending', 'Approved'].includes(app.status);
       });
 
       const totalApps = apps.length;
@@ -2065,7 +2137,7 @@ const AdminDashboard = () => {
 
     // Prepare Transaction Data
     const allTransactions = assessmentApps
-      .filter(app => app.status !== 'Rejected' && app.status !== 'Cancelled')
+      .filter(app => ['Pending', 'Approved'].includes(app.status))
       .map(app => {
         const assessment = assessments.find(a => a._id === (app.assessmentId?._id || app.assessmentId));
         const feeString = assessment?.fee ? String(assessment.fee).replace(/[^0-9.]/g, '') : '0';
@@ -2435,6 +2507,507 @@ const AdminDashboard = () => {
     );
   };
 
+  // --- ANNOUNCEMENT HANDLERS ---
+  const handleCreateAnnouncement = async (e) => {
+    e.preventDefault();
+    try {
+      if (!announcementForm.publishDate) {
+        toast.error('Please select a publish date.');
+        return;
+      }
+      if (!announcementForm.category) {
+        toast.error('Please select a category.');
+        return;
+      }
+      setPostingAnnouncement(true);
+      const buildDateTime = (dateStr, timeStr) => {
+        if (!dateStr) return null;
+        if (!timeStr) return new Date(dateStr);
+        const [y, m, d] = dateStr.split('-').map(Number);
+        const [hh, mm] = timeStr.split(':').map(Number);
+        return new Date(y, m - 1, d, hh || 0, mm || 0);
+      };
+      const payload = {
+        ...announcementForm,
+        publishDate: buildDateTime(announcementForm.publishDate, announcementForm.publishTime),
+        expiryDate: announcementForm.expiryDate ? buildDateTime(announcementForm.expiryDate, announcementForm.expiryTime) : undefined
+      };
+      const res = await authedFetch('/api/announcements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        throw new Error(errText || 'Failed to create announcement');
+      }
+      await loadData(true);
+      setShowAnnouncementModal(false);
+      setAnnouncementForm({ title: '', content: '', priority: 'normal', category: '', publishDate: '', publishTime: '', expiryDate: '', expiryTime: '' });
+      toast.success('Announcement posted successfully.');
+    } catch (err) {
+      console.error(err);
+      setError('Failed to create announcement');
+      toast.error(err.message || 'Failed to post announcement.');
+    } finally {
+      setPostingAnnouncement(false);
+    }
+  };
+
+  const handleDeleteAnnouncement = async (id) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Announcement',
+      message: 'Are you sure you want to delete this announcement? This action cannot be undone.',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          await authedFetch(`/api/announcements/${id}`, { method: 'DELETE' });
+          await loadData(true);
+          toast.success('Announcement deleted.');
+        } catch (err) {
+          console.error(err);
+          setError('Failed to delete announcement');
+          toast.error('Failed to delete announcement.');
+        }
+      }
+    });
+  };
+
+  const handleToggleAnnouncementStatus = async (id, currentStatus) => {
+    try {
+      await authedFetch(`/api/announcements/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: !currentStatus })
+      });
+      await loadData(true);
+    } catch (err) {
+      console.error(err);
+      setError('Failed to update announcement');
+    }
+  };
+
+  const handleDeleteAllAnnouncements = () => {
+    if (announcements.length === 0) {
+      setConfirmModal({
+        isOpen: true,
+        title: 'No Announcements',
+        message: 'There are no announcements to delete.',
+        type: 'info',
+        onConfirm: null
+      });
+      return;
+    }
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete All Announcements',
+      message: 'Are you sure you want to delete all announcements? This action cannot be undone.',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          await Promise.all(
+            announcements.map(a => authedFetch(`/api/announcements/${a._id}`, { method: 'DELETE' }))
+          );
+          await loadData(true);
+        } catch (err) {
+          console.error(err);
+          setError('Failed to delete all announcements');
+        }
+      }
+    });
+  };
+
+  const renderAnnouncements = () => (
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h2 className={`text-3xl font-bold tracking-tight ${darkMode ? 'text-white' : 'text-gray-900'}`}>Announcements</h2>
+          <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Manage system-wide announcements for students</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+               setAnnouncementForm({ title: '', content: '', priority: 'normal', category: '', publishDate: '', publishTime: '', expiryDate: '', expiryTime: '' });
+               setShowAnnouncementModal(true);
+            }}
+            className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-medium text-sm transition-all focus:outline-none
+              ${darkMode ? 'text-blue-300 border border-blue-400/40 ring-1 ring-blue-800/30 bg-transparent hover:bg-blue-900/20' 
+                          : 'text-blue-600 border border-blue-300 ring-1 ring-blue-200/50 bg-white hover:bg-blue-50 shadow-sm'}`}
+          >
+            <Plus className="w-3.5 h-3.5" /> New Announcement
+          </button>
+          <button
+            onClick={handleDeleteAllAnnouncements}
+            className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-medium text-sm transition-all focus:outline-none
+              ${darkMode ? 'text-red-300 border border-red-400/40 ring-1 ring-red-800/30 bg-transparent hover:bg-red-900/20' 
+                          : 'text-red-600 border border-red-300 ring-1 ring-red-200/50 bg-white hover:bg-red-50 shadow-sm'}`}
+          >
+            <Trash2 className="w-3.5 h-3.5" /> Delete All
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4">
+        <div className="flex flex-col md:flex-row gap-4 items-end">
+          <div className="flex-1">
+            <div className="relative group">
+              <div className={`absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none ${darkMode ? 'text-gray-500 group-focus-within:text-blue-400' : 'text-gray-400 group-focus-within:text-blue-500'}`}>
+                <Search className="w-5 h-5" />
+              </div>
+              <input
+                type="text"
+                value={announcementSearch}
+                onChange={(e) => setAnnouncementSearch(e.target.value)}
+                className={`w-full pl-11 pr-4 py-3.5 rounded-xl text-sm font-medium outline-none ring-1 ring-inset transition-all ${
+                  darkMode 
+                    ? 'bg-gray-900/50 ring-gray-700 text-white placeholder-gray-600 focus:ring-2 focus:ring-blue-500/50 focus:bg-gray-900' 
+                    : 'bg-gray-50 ring-gray-200 text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500/20 focus:bg-white focus:shadow-sm'
+                }`}
+                placeholder="Search title or content..."
+              />
+            </div>
+          </div>
+          <div className="w-full md:w-64">
+            <CustomDropdown
+              options={[
+                { value: 'All', label: 'All CATEGORIES', color: 'bg-gray-400' },
+                { value: 'Academic', label: 'Academic', color: 'bg-blue-500', icon: BookOpen },
+                { value: 'Facilities', label: 'Facilities', color: 'bg-purple-500', icon: Settings },
+                { value: 'Assessment', label: 'Assessment', color: 'bg-indigo-500', icon: Award },
+                { value: 'Events', label: 'Events', color: 'bg-green-500', icon: Calendar },
+                { value: 'Health & Safety', label: 'Health & Safety', color: 'bg-red-500', icon: CheckCircle2 },
+                { value: 'Administrative', label: 'Administrative', color: 'bg-yellow-500', icon: Settings },
+              ]}
+              value={announcementCategoryFilter}
+              onChange={(val) => setAnnouncementCategoryFilter(val)}
+              placeholder="Select Category"
+              darkMode={darkMode}
+              className="w-full"
+              buttonClassName="py-3.5"
+            />
+          </div>
+          <div className="w-full md:w-64">
+            <CustomDropdown
+              options={[
+                { value: 'All', label: 'All STATUS', color: 'bg-gray-400' },
+                { value: 'Active', label: 'Active', color: 'bg-green-500', icon: CheckCircle2 },
+                { value: 'Scheduled', label: 'Scheduled', color: 'bg-blue-500', icon: Calendar },
+                { value: 'Expired', label: 'Expired', color: 'bg-red-500', icon: Clock },
+              ]}
+              value={announcementStatusFilter}
+              onChange={(val) => setAnnouncementStatusFilter(val)}
+              placeholder="Filter Status"
+              darkMode={darkMode}
+              className="w-full"
+              buttonClassName="py-3.5"
+            />
+          </div>
+        </div>
+        {announcements.filter(a => {
+            const term = announcementSearch.toLowerCase();
+            const textMatch = (a.title || '').toLowerCase().includes(term) || (a.content || '').toLowerCase().includes(term);
+            const catMatch = announcementCategoryFilter === 'All' || a.category === announcementCategoryFilter;
+            const now = new Date();
+            const isScheduled = a.publishDate && new Date(a.publishDate) > now;
+            const isExpired = a.expiryDate && new Date(a.expiryDate) < now;
+            const isActiveTime = !isScheduled && !isExpired;
+            const isActiveStatus = a.isActive && isActiveTime;
+            const statusMatch =
+              announcementStatusFilter === 'All' ? true :
+              announcementStatusFilter === 'Scheduled' ? isScheduled :
+              announcementStatusFilter === 'Expired' ? isExpired :
+              announcementStatusFilter === 'Active' ? isActiveStatus : true;
+            return textMatch && catMatch && statusMatch;
+          }).map((ann) => (
+          <div 
+            key={ann._id} 
+            className={`p-6 rounded-2xl border shadow-sm transition-all ring-1 ${
+               darkMode ? 'bg-gray-800 border-gray-700 ring-white/10' : 'bg-white border-gray-100 ring-black/5'
+            } ${!ann.isActive ? 'opacity-60 grayscale' : ''}`}
+          >
+            <div className="flex justify-between items-start gap-4">
+               <div className="flex items-start gap-4">
+                  {(() => {
+                    const Icon = ann.category === 'Academic' 
+                      ? BookOpen 
+                      : ann.category === 'Facilities' 
+                        ? Settings 
+                        : ann.category === 'Assessment' 
+                          ? Award 
+                          : ann.category === 'Events' 
+                            ? Calendar 
+                            : ann.category === 'Health & Safety' 
+                              ? CheckCircle2 
+                              : Settings;
+                    return (
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                        darkMode ? 'bg-white/10' : 'bg-gray-100'
+                      }`}>
+                        <Icon className="w-5 h-5" />
+                      </div>
+                    );
+                  })()}
+                  <div>
+                  <div className="flex items-center gap-3 mb-2">
+                     <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider border ${
+                        ann.priority === 'urgent' ? 'bg-red-100 text-red-700 border-red-200' :
+                        ann.priority === 'high' ? 'bg-orange-100 text-orange-700 border-orange-200' :
+                        'bg-blue-100 text-blue-700 border-blue-200'
+                     }`}>
+                        {ann.priority}
+                     </span>
+                     {ann.category && (
+                       <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider border ${
+                          ann.category === 'Academic' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                          ann.category === 'Facilities' ? 'bg-purple-100 text-purple-700 border-purple-200' :
+                          ann.category === 'Assessment' ? 'bg-indigo-100 text-indigo-700 border-indigo-200' :
+                          ann.category === 'Events' ? 'bg-green-100 text-green-700 border-green-200' :
+                          ann.category === 'Health & Safety' ? 'bg-red-100 text-red-700 border-red-200' :
+                          'bg-yellow-100 text-yellow-700 border-yellow-200'
+                       }`}>
+                          {ann.category}
+                       </span>
+                     )}
+                    <span className="hidden">
+                       {`Publish: ${ann.publishDate ? new Date(ann.publishDate).toLocaleDateString() : new Date(ann.createdAt).toLocaleDateString()}`}
+                    </span>
+                    {ann.expiryDate && (
+                      <span className="hidden">
+                         {`Expires: ${new Date(ann.expiryDate).toLocaleDateString()}`}
+                      </span>
+                    )}
+                     {ann.publishDate && new Date(ann.publishDate) > new Date() && (
+                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                          darkMode ? 'bg-blue-900/30 text-blue-300 border border-blue-800/40' : 'bg-blue-50 text-blue-700 border border-blue-200'
+                       }`}>
+                         Scheduled
+                       </span>
+                     )}
+                     {ann.expiryDate && new Date(ann.expiryDate) < new Date() && (
+                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                          darkMode ? 'bg-red-900/30 text-red-300 border border-red-800/40' : 'bg-red-50 text-red-700 border border-red-200'
+                       }`}>
+                         Expired
+                       </span>
+                     )}
+                     {!ann.isActive && (
+                        <span className="text-xs font-bold text-gray-400 bg-gray-100 px-2 py-0.5 rounded">INACTIVE</span>
+                     )}
+                  </div>
+                  <h3 className={`text-xl font-bold mb-2 tracking-tight ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                     {ann.title}
+                  </h3>
+                  <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                     {ann.content}
+                  </p>
+                  <div className={`mt-4 flex items-center gap-6 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4" />
+                      <span className="text-sm">
+                        {new Date(ann.publishDate ? ann.publishDate : ann.createdAt).toLocaleString()}
+                      </span>
+                    </div>
+                    {ann.expiryDate && (
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4" />
+                        <span className="text-sm">
+                          {`Expires ${new Date(ann.expiryDate).toLocaleString()}`}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  </div>
+               </div>
+               <div className="flex items-center gap-2">
+                  <button
+                     onClick={() => handleToggleAnnouncementStatus(ann._id, ann.isActive)}
+                     className={`p-2 rounded-lg transition-all focus:outline-none
+                        ${ann.isActive 
+                           ? (darkMode ? 'text-green-300 border border-green-400/40 ring-1 ring-green-800/30 hover:bg-green-900/20' 
+                                       : 'text-green-600 border border-green-300 ring-1 ring-green-200/50 bg-white hover:bg-green-50 shadow-sm')
+                           : (darkMode ? 'text-gray-300 border border-gray-500/40 ring-1 ring-gray-800/30 hover:bg-gray-800/30' 
+                                       : 'text-gray-600 border border-gray-300 ring-1 ring-gray-200/50 bg-white hover:bg-gray-50 shadow-sm')
+                        }`}
+                     title={ann.isActive ? "Deactivate" : "Activate"}
+                  >
+                     <Eye className="w-4 h-4" />
+                  </button>
+                  <button
+                     onClick={() => handleDeleteAnnouncement(ann._id)}
+                     className={`p-2 rounded-lg transition-all focus:outline-none
+                        ${darkMode 
+                          ? 'text-red-300 border border-red-400/40 ring-1 ring-red-800/30 hover:bg-red-900/20' 
+                          : 'text-red-600 border border-red-300 ring-1 ring-red-200/50 bg-white hover:bg-red-50 shadow-sm'
+                        }`}
+                     title="Delete"
+                  >
+                     <Trash2 className="w-4 h-4" />
+                  </button>
+               </div>
+            </div>
+          </div>
+        ))}
+
+        {announcements.length === 0 && (
+           <div className={`text-center py-12 rounded-2xl border-2 border-dashed ${darkMode ? 'border-gray-700 text-gray-500' : 'border-gray-200 text-gray-400'}`}>
+              <Megaphone className="w-12 h-12 mx-auto mb-3 opacity-20" />
+              <p>No announcements yet</p>
+           </div>
+        )}
+      </div>
+
+      {/* Create Announcement Modal */}
+      {showAnnouncementModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className={`rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-300 ${darkMode ? 'bg-gray-800 ring-1 ring-white/10' : 'bg-white ring-1 ring-black/5'}`}>
+            <div className={`px-8 py-6 border-b flex justify-between items-start ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-100 bg-white'}`}>
+              <div>
+                <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>New Announcement</h3>
+                <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Publish a system-wide announcement</p>
+              </div>
+              <button 
+                onClick={() => setShowAnnouncementModal(false)} 
+                className={`p-2 rounded-full transition-all ${darkMode ? 'text-gray-400 hover:text-white hover:bg-gray-700' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <form onSubmit={handleCreateAnnouncement} className="p-8 space-y-6">
+              <div>
+                <label className={`block text-xs font-bold uppercase tracking-wider mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Title</label>
+                <div className="relative group">
+                  <div className={`absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none transition-colors ${darkMode ? 'text-gray-500 group-focus-within:text-blue-400' : 'text-gray-400 group-focus-within:text-blue-500'}`}>
+                    <Megaphone className="w-5 h-5" />
+                  </div>
+                  <input 
+                    type="text" 
+                    required
+                    value={announcementForm.title}
+                    onChange={e => setAnnouncementForm({...announcementForm, title: e.target.value})}
+                    className={`w-full pl-11 pr-4 py-3.5 rounded-xl text-sm font-medium outline-none ring-1 ring-inset transition-all ${
+                      darkMode 
+                        ? 'bg-gray-900/50 ring-gray-700 text-white placeholder-gray-600 focus:ring-2 focus:ring-blue-500/50 focus:bg-gray-900' 
+                        : 'bg-gray-50 ring-gray-200 text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500/20 focus:bg-white focus:shadow-sm'
+                    }`}
+                    placeholder="e.g., No Classes Due to Typhoon"
+                  />
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <CustomDatePicker
+                  label="Publish Date"
+                  value={announcementForm.publishDate}
+                  onChange={(val) => setAnnouncementForm({ ...announcementForm, publishDate: val })}
+                  darkMode={darkMode}
+                />
+                <CustomDatePicker
+                  label="Expiry Date (Optional)"
+                  value={announcementForm.expiryDate}
+                  onChange={(val) => setAnnouncementForm({ ...announcementForm, expiryDate: val })}
+                  darkMode={darkMode}
+                />
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <MuiTimePicker
+                  label="Publish Time"
+                  value={announcementForm.publishTime}
+                  onChange={(val) => setAnnouncementForm({ ...announcementForm, publishTime: val })}
+                  darkMode={darkMode}
+                />
+                <MuiTimePicker
+                  label="Expiry Time (Optional)"
+                  value={announcementForm.expiryTime}
+                  onChange={(val) => setAnnouncementForm({ ...announcementForm, expiryTime: val })}
+                  darkMode={darkMode}
+                />
+              </div>
+              
+              <div>
+                <label className={`block text-xs font-bold uppercase tracking-wider mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Category</label>
+                <CustomDropdown
+                  options={[
+                    { value: 'Academic', label: 'Academic', color: 'bg-blue-500', icon: BookOpen },
+                    { value: 'Facilities', label: 'Facilities', color: 'bg-purple-500', icon: Settings },
+                    { value: 'Assessment', label: 'Assessment', color: 'bg-indigo-500', icon: Award },
+                    { value: 'Events', label: 'Events', color: 'bg-green-500', icon: Calendar },
+                    { value: 'Health & Safety', label: 'Health & Safety', color: 'bg-red-500', icon: CheckCircle2 },
+                    { value: 'Administrative', label: 'Administrative', color: 'bg-yellow-500', icon: Settings },
+                  ]}
+                  value={announcementForm.category}
+                  onChange={(val) => setAnnouncementForm({ ...announcementForm, category: val })}
+                  placeholder="Select Category"
+                  darkMode={darkMode}
+                  className="w-full"
+                  buttonClassName="py-3.5"
+                />
+              </div>
+
+              <div>
+                <label className={`block text-xs font-bold uppercase tracking-wider mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Priority</label>
+                <CustomDropdown
+                  options={[
+                    { value: 'normal', label: 'Normal', color: 'bg-blue-500' },
+                    { value: 'high', label: 'High', color: 'bg-orange-500' },
+                    { value: 'urgent', label: 'Urgent', color: 'bg-red-500' },
+                  ]}
+                  value={announcementForm.priority}
+                  onChange={(val) => setAnnouncementForm({ ...announcementForm, priority: val })}
+                  placeholder="Select Priority"
+                  darkMode={darkMode}
+                  className="w-full"
+                  buttonClassName="py-3.5"
+                />
+              </div>
+
+              <div>
+                <label className={`block text-xs font-bold uppercase tracking-wider mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Content</label>
+                <textarea 
+                  required
+                  rows="4"
+                  value={announcementForm.content}
+                  onChange={e => setAnnouncementForm({...announcementForm, content: e.target.value})}
+                  className={`w-full px-4 py-3.5 rounded-xl text-sm font-medium outline-none ring-1 ring-inset transition-all resize-none ${
+                    darkMode 
+                      ? 'bg-gray-900/50 ring-gray-700 text-white placeholder-gray-600 focus:ring-2 focus:ring-blue-500/50 focus:bg-gray-900' 
+                      : 'bg-gray-50 ring-gray-200 text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500/20 focus:bg-white focus:shadow-sm'
+                  }`}
+                  placeholder="Enter announcement details..."
+                />
+              </div>
+
+              <div className={`pt-2 flex justify-end gap-3 ${darkMode ? '' : ''}`}>
+                <button 
+                  type="button"
+                  onClick={() => setShowAnnouncementModal(false)}
+                  className={`px-6 py-3 rounded-xl font-bold text-sm transition-all ${darkMode ? 'text-gray-400 hover:text-white hover:bg-gray-700' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'}`}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={postingAnnouncement}
+                  className={`px-8 py-3 rounded-xl font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 shadow-lg shadow-blue-500/30 hover:shadow-blue-500/40 transition-all text-sm ${postingAnnouncement ? 'opacity-70 cursor-not-allowed' : 'hover:-translate-y-0.5 active:scale-95'}`}
+                >
+                  {postingAnnouncement ? (
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Posting...
+                    </span>
+                  ) : (
+                    'Post Announcement'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   // --- START OF SETTINGS SECTION ---
   const renderSettings = () => (
     <div className="max-w-4xl mx-auto py-8 px-4">
@@ -2536,6 +3109,7 @@ const AdminDashboard = () => {
             </div>
           </div>
 
+        </div>
           {/* Action Footer */}
           <div className={`pt-6 border-t flex justify-end ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
             <button 
@@ -2562,7 +3136,6 @@ const AdminDashboard = () => {
               )}
             </button>
           </div>
-        </div>
       </div>
     </div>
   );
@@ -2573,11 +3146,7 @@ const AdminDashboard = () => {
     // Find all active/pending applicants for this assessment
     const applicantsToComplete = assessmentApps.filter(app => {
        const appId = app.assessmentId?._id || app.assessmentId;
-       return appId === viewingAssessmentApplicants._id && 
-              app.status !== 'Rejected' && 
-              app.status !== 'Cancelled' && 
-              app.status !== 'Completed' &&
-              app.status !== 'Drop';
+       return appId === viewingAssessmentApplicants._id && ['Pending', 'Approved'].includes(app.status);
     });
 
     if (applicantsToComplete.length === 0) {
@@ -2627,6 +3196,206 @@ const AdminDashboard = () => {
          }
       }
     });
+  };
+
+  const renderPendingApprovals = () => {
+    // Filter for pending registrations
+    let pendingRegs = registrations.filter(r => r.status === 'pending');
+    
+    // Apply Search Filter
+    if (scheduleSearchTerm) { // Use scheduleSearchTerm instead of undefined searchTerm
+      const lowerSearch = scheduleSearchTerm.toLowerCase();
+      pendingRegs = pendingRegs.filter(r => {
+        const student = r.studentId || {};
+        const schedule = r.scheduleId || {};
+        const fullName = `${student.firstName || ''} ${student.lastName || ''}`.toLowerCase();
+        const courseTitle = (schedule.courseTitle || schedule.title || '').toLowerCase();
+        
+        return fullName.includes(lowerSearch) || courseTitle.includes(lowerSearch);
+      });
+    }
+
+    // Sort by Date (Newest first)
+    pendingRegs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    return (
+      <div className="space-y-6 animate-in fade-in duration-500">
+        <div className="flex flex-col gap-6">
+           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+             <div>
+               <h2 className={`text-3xl font-bold tracking-tight ${darkMode ? 'text-white' : 'text-gray-900'}`}>Pending Approvals</h2>
+               <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Review and approve student enrollment applications</p>
+             </div>
+             
+             {/* Search Bar */}
+             <div className="relative group w-full sm:w-auto">
+                <Search className={`absolute left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 transition-colors ${darkMode ? 'text-gray-500 group-focus-within:text-blue-500' : 'text-gray-400 group-focus-within:text-blue-500'}`} />
+                <input
+                  type="text"
+                  placeholder="Search applicant or course..."
+                  value={scheduleSearchTerm} // Use scheduleSearchTerm
+                  onChange={(e) => setScheduleSearchTerm(e.target.value)} // Use setScheduleSearchTerm
+                  className={`pl-11 pr-4 py-3 rounded-xl border-none ring-1 ring-inset focus:ring-2 transition-all w-full sm:w-80 text-sm font-medium ${
+                    darkMode 
+                      ? 'bg-gray-900/50 ring-gray-700 text-white placeholder-gray-500 focus:ring-blue-500/50 focus:bg-gray-900' 
+                      : 'bg-white ring-gray-200 text-gray-900 placeholder-gray-400 focus:ring-blue-500/20 focus:bg-white focus:shadow-sm'
+                  }`}
+                />
+             </div>
+           </div>
+        </div>
+
+        <div className={`rounded-3xl shadow-xl border overflow-hidden transition-all duration-300 ${darkMode ? 'bg-gray-800/50 backdrop-blur-xl border-gray-700 shadow-black/20' : 'bg-white border-gray-100 shadow-gray-200/50'}`}>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className={`border-b ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-100 bg-gray-50/30'}`}>
+                  <th className={`px-6 py-5 text-left text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Date</th>
+                  <th className={`px-6 py-5 text-left text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Applicant</th>
+                  <th className={`px-6 py-5 text-left text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}> Course</th>
+                  <th className={`px-6 py-5 text-left text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Payment Mode</th>
+                  <th className={`px-6 py-5 text-left text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Status</th>
+                  <th className={`px-6 py-5 text-right text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Actions</th>
+                </tr>
+              </thead>
+              <tbody className={`divide-y ${darkMode ? 'divide-gray-700/50' : 'divide-gray-100'}`}>
+                {pendingRegs.length > 0 ? (
+                  pendingRegs.map((reg) => {
+                    const student = reg.studentId || {};
+                    const schedule = reg.scheduleId || {};
+                    const courseTitle = schedule.courseTitle || schedule.title || 'Unknown Course';
+                    
+                    return (
+                      <tr 
+                        key={reg._id} 
+                        onClick={() => setViewingPendingRegistration(reg)}
+                        className={`group transition-all duration-200 cursor-pointer ${darkMode ? 'hover:bg-gray-700/30' : 'hover:bg-blue-50/30'}`}
+                      >
+                        <td className={`px-6 py-5 whitespace-nowrap text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                           <div className="flex flex-col">
+                              <span className={`font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                 {new Date(reg.createdAt).toLocaleDateString()}
+                              </span>
+                              <span className="text-xs opacity-70">
+                                 {new Date(reg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                           </div>
+                        </td>
+                        <td className="px-6 py-5 whitespace-nowrap">
+                           <div className="flex items-center gap-3">
+                              <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold ring-2 ring-offset-2 transition-all overflow-hidden ${
+                                 darkMode ? 'bg-blue-900/30 text-blue-300 ring-gray-800 group-hover:ring-gray-700' : 'bg-blue-100 text-blue-600 ring-white group-hover:ring-blue-50'
+                              }`}>
+                                 {student.profilePicture ? (
+                                    <img 
+                                       src={student.profilePicture} 
+                                       alt="Profile" 
+                                       className="w-full h-full object-cover"
+                                    />
+                                 ) : (
+                                    <span>{student.firstName?.[0]}{student.lastName?.[0]}</span>
+                                 )}
+                              </div>
+                              <div className="flex flex-col">
+                                 <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                    {student.firstName} {student.lastName}
+                                 </span>
+                                 <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                    {student.email || 'No email'}
+                                 </span>
+                              </div>
+                           </div>
+                        </td>
+                        <td className="px-6 py-5 whitespace-nowrap">
+                           <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
+                              {courseTitle}
+                           </span>
+                        </td>
+                        <td className="px-6 py-5 whitespace-nowrap">
+                           <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${
+                             reg.payment?.isOnline 
+                               ? (darkMode ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' : 'bg-purple-50 text-purple-600 border-purple-200')
+                               : (darkMode ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' : 'bg-orange-50 text-orange-600 border-orange-200')
+                           }`}>
+                             {reg.payment?.isOnline ? 'Online (GCash)' : 'Walk-in'}
+                           </span>
+                        </td>
+                        <td className="px-6 py-5 whitespace-nowrap">
+                           <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${
+                              darkMode ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' : 'bg-yellow-50 text-yellow-600 border-yellow-200'
+                           }`}>
+                              <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 mr-2"></span>
+                              Pending
+                           </span>
+                        </td>
+                        <td className="px-6 py-5 whitespace-nowrap text-right">
+                           <div className="flex items-center justify-end gap-2">
+                              <button
+                                 onClick={(e) => {
+                                    e.stopPropagation();
+                                    setConfirmModal({
+                                      isOpen: true,
+                                      title: 'Approve Registration',
+                                      message: `Are you sure you want to approve the registration for ${student.firstName} ${student.lastName}?`,
+                                      type: 'success',
+                                      onConfirm: () => handleUpdateRegistrationStatus(reg._id, 'active')
+                                    });
+                                 }}
+                                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                    darkMode 
+                                       ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30' 
+                                       : 'bg-green-100 text-green-700 hover:bg-green-200'
+                                 }`}
+                              >
+                                 Approve
+                              </button>
+                              <button
+                                 onClick={(e) => {
+                                    e.stopPropagation();
+                                    setDropReasonModal({
+                                      isOpen: true,
+                                      appId: null,
+                                      regId: reg._id,
+                                      type: 'registration',
+                                      statusToSet: 'rejected',
+                                      reason: 'Incomplete Requirements',
+                                      customReason: ''
+                                    });
+                                 }}
+                                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                    darkMode 
+                                       ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' 
+                                       : 'bg-red-100 text-red-700 hover:bg-red-200'
+                                 }`}
+                              >
+                                 Reject
+                              </button>
+                           </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan="6" className={`px-6 py-20 text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      <div className="flex flex-col items-center justify-center gap-4">
+                        <div className={`p-4 rounded-full ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                           <CheckCircle2 className="w-8 h-8 opacity-20" />
+                        </div>
+                        <div className="space-y-1">
+                           <p className="text-lg font-medium">No pending approvals</p>
+                           <p className="text-sm opacity-60">All enrollment applications have been processed</p>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   // --- START OF ASSESSMENT SECTION ---
@@ -2957,7 +3726,7 @@ const AdminDashboard = () => {
                           <div className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${darkMode ? 'bg-blue-900/20 text-blue-400 border-blue-900/30' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
                             {assessmentApps.filter(app => {
                                const appId = app.assessmentId?._id || app.assessmentId;
-                               return appId === assessment._id && app.status === 'Approved';
+                               return String(appId) === String(assessment._id) && String(app.status || '').toLowerCase() === 'approved';
                             }).length} Applicants
                           </div>
                         </td>
@@ -3056,7 +3825,8 @@ const AdminDashboard = () => {
               label: 'Schedules',
               subItems: [
                 { id: '', label: 'Schedule Management' },
-                { id: 'students', label: 'Students' }
+                { id: 'students', label: 'Students' },
+                { id: 'pending-approvals', label: 'Pending Approvals' }
               ]
             },
             { 
@@ -3068,6 +3838,7 @@ const AdminDashboard = () => {
                 { id: 'applications', label: 'Applications' }
               ]
             },
+            { id: 'announcements', icon: Megaphone, label: 'Announcements' },
             { id: 'sales-reports', icon: TrendingUp, label: 'Sales Reports' },
             { id: 'settings', icon: Settings, label: 'Settings' }
           ].map((item) => (
@@ -3187,7 +3958,7 @@ const AdminDashboard = () => {
                       <div className={`p-4 border-b flex justify-between items-center ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
                         <h4 className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Notifications</h4>
                         {unreadCount > 0 && (
-                          <button onClick={handleMarkAllAsRead} className="text-xs text-blue-500 hover:text-blue-600">Mark all read</button>
+                          <button onClick={handleMarkAllAsRead} className={`text-xs ${darkMode ? 'text-blue-300 hover:text-blue-200' : 'text-blue-600 hover:text-blue-700'}`}>Mark all read</button>
                         )}
                       </div>
                       <div className="max-h-80 overflow-y-auto">
@@ -3284,6 +4055,7 @@ const AdminDashboard = () => {
             {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">{error}</div>}
             {activeSection === 'dashboard' && renderDashboard()}
             {activeSection === 'schedules' && (
+              activeSubSection === 'pending-approvals' ? renderPendingApprovals() :
               (activeSubSection === 'students' || activeSubSection === 'view-student' || activeSubSection === 'student-form')
                 ? (
                   <StudentManager 
@@ -3300,6 +4072,7 @@ const AdminDashboard = () => {
             {/* activeSection === 'students' removed as it is now a sub-section of schedules */}
             {activeSection === 'assessments' && renderAssessments()}
             {activeSection === 'sales-reports' && renderSalesReports()}
+            {activeSection === 'announcements' && renderAnnouncements()}
             {activeSection === 'settings' && renderSettings()}
             {activeSection === 'notifications' && renderNotifications()}
           </div>
@@ -3515,13 +4288,13 @@ const AdminDashboard = () => {
                     {assessmentApps
                       .filter(app => {
                          const appId = app.assessmentId?._id || app.assessmentId;
-                         return appId === viewingAssessmentApplicants._id && app.status === 'Approved';
+                         return String(appId) === String(viewingAssessmentApplicants._id) && String(app.status || '').toLowerCase() === 'approved';
                       })
                       .length > 0 ? (
                         assessmentApps
                           .filter(app => {
                              const appId = app.assessmentId?._id || app.assessmentId;
-                             return appId === viewingAssessmentApplicants._id && app.status === 'Approved';
+                             return String(appId) === String(viewingAssessmentApplicants._id) && String(app.status || '').toLowerCase() === 'approved';
                           })
                           .map((app) => (
                             <tr key={app._id} className={`group transition-colors ${darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}>
@@ -3567,11 +4340,9 @@ const AdminDashboard = () => {
                                 <div className="relative group/select" onClick={(e) => e.stopPropagation()}>
                                   <CustomDropdown
                                     options={[
-                                      { value: 'Pending', label: 'Pending', color: 'bg-yellow-500' },
                                       { value: 'Approved', label: 'Approved', color: 'bg-green-500' },
                                       { value: 'Completed', label: 'Completed', color: 'bg-blue-500' },
-                                      { value: 'Drop', label: 'Drop', color: 'bg-red-500' },
-                                      { value: 'Rejected', label: 'Rejected', color: 'bg-red-500' }
+                                      { value: 'Drop', label: 'Drop', color: 'bg-red-500' }
                                     ]}
                                     value={app.status}
                                     onChange={(val) => {
@@ -3580,6 +4351,8 @@ const AdminDashboard = () => {
                                         setDropReasonModal({
                                           isOpen: true,
                                           appId: app._id,
+                                          type: 'assessment',
+                                          statusToSet: newStatus,
                                           reason: '2 Absences',
                                           customReason: ''
                                         });
@@ -3600,7 +4373,7 @@ const AdminDashboard = () => {
                                       app.status === 'Approved' ? (darkMode ? '!bg-green-500/10 !text-green-400 !border-green-500/20' : '!bg-green-50 !text-green-700 !border-green-200') :
                                       app.status === 'Completed' ? (darkMode ? '!bg-blue-500/10 !text-blue-400 !border-blue-500/20' : '!bg-blue-50 !text-blue-700 !border-blue-200') :
                                       app.status === 'Drop' ? (darkMode ? '!bg-red-500/10 !text-red-400 !border-red-500/20' : '!bg-red-50 !text-red-700 !border-red-200') :
-                                      (darkMode ? '!bg-yellow-500/10 !text-yellow-400 !border-yellow-500/20' : '!bg-yellow-50 !text-yellow-700 !border-yellow-200')
+                                      (darkMode ? '!bg-green-500/10 !text-green-400 !border-green-500/20' : '!bg-green-50 !text-green-700 !border-green-200')
                                     }`}
                                   />
                                 </div>
@@ -3892,14 +4665,42 @@ const AdminDashboard = () => {
               </div>
 
               <div>
+                <label className={`block text-xs font-bold uppercase tracking-wider mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Price</label>
+                <input 
+                  type="number" 
+                  min="0"
+                  step="0.01"
+                  className={`w-full px-4 py-3.5 rounded-xl text-sm font-medium outline-none ring-1 ring-inset transition-all ${
+                    darkMode 
+                      ? 'bg-gray-900/50 ring-gray-700 text-white placeholder-gray-600 focus:ring-2 focus:ring-blue-500/50 focus:bg-gray-900' 
+                      : 'bg-gray-50 ring-gray-200 text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500/20 focus:bg-white focus:shadow-sm'
+                  } ${scheduleErrors.price ? 'ring-red-500' : ''}`}
+                  placeholder="₱ 0.00"
+                  value={scheduleForm.price}
+                  onKeyDown={(e) => {
+                    if (['-', '+', 'e', 'E'].includes(e.key)) {
+                      e.preventDefault();
+                    }
+                  }}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '' || /^\d+(\.\d{0,2})?$/.test(val)) {
+                      setScheduleForm({...scheduleForm, price: val});
+                      if (scheduleErrors.price) setScheduleErrors({...scheduleErrors, price: ''});
+                    }
+                  }}
+                />
+                {scheduleErrors.price && <p className="mt-1 text-sm text-red-500 font-medium">{scheduleErrors.price}</p>}
+              </div>
+
+              <div>
                 <label className={`block text-xs font-bold uppercase tracking-wider mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Status</label>
                 <div className="relative group">
                   <CustomDropdown
                     options={[
                       { value: 'Active', label: 'Active', color: 'bg-green-500' },
                       { value: 'Ongoing', label: 'Ongoing', color: 'bg-blue-500' },
-                      { value: 'Pending', label: 'Pending', color: 'bg-yellow-500' },
-                      { value: 'Closed', label: 'Closed', color: 'bg-red-500' }
+                      { value: 'Pending', label: 'Pending', color: 'bg-yellow-500' }
                     ]}
                     value={scheduleForm.status || 'Active'}
                     onChange={(val) => setScheduleForm({...scheduleForm, status: val})}
@@ -3982,29 +4783,30 @@ const AdminDashboard = () => {
                   <tbody className={`divide-y ${darkMode ? 'divide-gray-800' : 'divide-gray-100'}`}>
                     {students
                       .filter(student => {
-                         return registrations.some(reg => 
-                           (reg.scheduleId?._id === viewingScheduleStudents._id || reg.scheduleId === viewingScheduleStudents._id) &&
-                           (reg.studentId?._id === student._id || reg.studentId === student._id) &&
-                           !['cancelled', 'completed', 'dropped'].includes(reg.status?.toLowerCase())
-                         );
+                        return registrations.some(reg => 
+                          String(reg.scheduleId?._id || reg.scheduleId) === String(viewingScheduleStudents._id) &&
+                          String(reg.studentId?._id || reg.studentId) === String(student._id) &&
+                          String(reg.status || '').toLowerCase() === 'active'
+                        );
                       })
                       .length > 0 ? (
                         students
                           .filter(student => {
                              return registrations.some(reg => 
-                               (reg.scheduleId?._id === viewingScheduleStudents._id || reg.scheduleId === viewingScheduleStudents._id) &&
-                               (reg.studentId?._id === student._id || reg.studentId === student._id) &&
-                               !['cancelled', 'completed', 'dropped'].includes(reg.status?.toLowerCase())
+                               String(reg.scheduleId?._id || reg.scheduleId) === String(viewingScheduleStudents._id) &&
+                               String(reg.studentId?._id || reg.studentId) === String(student._id) &&
+                               String(reg.status || '').toLowerCase() === 'active'
                              );
                           })
                           .map((student) => {
                             const reg = registrations.find(r => 
-                              (r.studentId?._id === student._id || r.studentId === student._id) && 
-                              (r.scheduleId?._id === viewingScheduleStudents._id || r.scheduleId === viewingScheduleStudents._id)
+                              String(r.studentId?._id || r.studentId) === String(student._id) && 
+                              String(r.scheduleId?._id || r.scheduleId) === String(viewingScheduleStudents._id) &&
+                              String(r.status || '').toLowerCase() === 'active'
                             );
                             
                             if (!reg) return null;
-                            const currentStatus = reg.status || 'active';
+                            const currentStatus = String(reg.status || 'active').toLowerCase();
 
                             return (
                               <tr key={student._id} className={`group transition-colors duration-200 ${darkMode ? 'hover:bg-gray-800/50' : 'hover:bg-blue-50/30'}`}>
@@ -4050,15 +4852,13 @@ const AdminDashboard = () => {
                                         className={`h-full rounded-full transition-all duration-500 ${
                                           currentStatus === 'completed' ? 'bg-green-500 w-full' :
                                           currentStatus === 'active' ? 'bg-blue-500 w-[25%]' :
-                                          currentStatus === 'pending' ? 'bg-yellow-500 w-[10%]' :
                                           'bg-red-500 w-full'
                                         }`} 
                                       />
                                     </div>
                                     <span className={`text-xs mt-1.5 block font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                                       {currentStatus === 'completed' ? '100% Complete' : 
-                                       currentStatus === 'active' ? 'In Progress' :
-                                       currentStatus === 'pending' ? 'Pending Approval' : 'Dropped/Cancelled'}
+                                       currentStatus === 'active' ? 'In Progress' : 'Dropped/Cancelled'}
                                     </span>
                                   </div>
                                 </td>
@@ -4067,7 +4867,6 @@ const AdminDashboard = () => {
                                       <CustomDropdown
                                         options={[
                                           { value: 'active', label: 'Active', color: 'bg-green-500' },
-                                          { value: 'pending', label: 'Pending', color: 'bg-yellow-500' },
                                           { value: 'completed', label: 'Completed', color: 'bg-blue-500' },
                                           { value: 'dropped', label: 'Dropped', color: 'bg-orange-500' },
                                           { value: 'cancelled', label: 'Cancelled', color: 'bg-red-500' }
@@ -4081,6 +4880,7 @@ const AdminDashboard = () => {
                                               appId: null,
                                               regId: reg._id,
                                               type: 'registration',
+                                              statusToSet: newStatus,
                                               reason: '2 Absences',
                                               customReason: ''
                                             });
@@ -4100,8 +4900,6 @@ const AdminDashboard = () => {
                                         buttonClassName={`py-2 px-4 text-xs font-semibold shadow-sm transition-all hover:shadow-md ${
                                           currentStatus === 'active' 
                                             ? (darkMode ? '!bg-green-500/10 !text-green-400 !ring-green-500/20' : '!bg-green-50 !text-green-700 !ring-green-200')
-                                            : currentStatus === 'pending'
-                                            ? (darkMode ? '!bg-yellow-500/10 !text-yellow-400 !ring-yellow-500/20' : '!bg-yellow-50 !text-yellow-700 !ring-yellow-200')
                                             : currentStatus === 'completed'
                                             ? (darkMode ? '!bg-blue-500/10 !text-blue-400 !ring-blue-500/20' : '!bg-blue-50 !text-blue-700 !ring-blue-200')
                                             : currentStatus === 'dropped'
@@ -4195,7 +4993,7 @@ const AdminDashboard = () => {
 
       {/* Confirmation Modal */}
       {confirmModal.isOpen && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[10002] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className={`relative w-full max-w-sm rounded-3xl shadow-2xl p-8 overflow-hidden animate-in zoom-in-95 duration-200 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
             <div className="flex flex-col items-center text-center">
               <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-5 transition-transform hover:scale-110 duration-300 ${
@@ -4243,15 +5041,32 @@ const AdminDashboard = () => {
         <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
           <div className={`rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 ${darkMode ? 'bg-gray-800 ring-1 ring-white/10' : 'bg-white ring-1 ring-black/5'}`}>
             <div className={`px-6 py-5 border-b ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-100 bg-white'}`}>
-              <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Drop Application</h3>
-              <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Select a reason for dropping this student.</p>
+              <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                {dropReasonModal.type === 'registration'
+                  ? (String(dropReasonModal.statusToSet || '').toLowerCase() === 'rejected'
+                      ? 'Reject Registration'
+                      : (String(dropReasonModal.statusToSet || '').toLowerCase() === 'cancelled' ? 'Cancel Registration' : 'Drop Registration'))
+                  : (String(dropReasonModal.statusToSet || '').toLowerCase() === 'rejected' ? 'Reject Application' : 'Drop Application')}
+              </h3>
+              <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                {dropReasonModal.type === 'registration'
+                  ? (String(dropReasonModal.statusToSet || '').toLowerCase() === 'rejected'
+                      ? 'Select a reason for rejecting this registration.'
+                      : 'Select a reason for this registration status.')
+                  : (String(dropReasonModal.statusToSet || '').toLowerCase() === 'rejected'
+                      ? 'Select a reason for rejecting this applicant.'
+                      : 'Select a reason for dropping this student.')}
+              </p>
             </div>
             
             <div className="p-6 space-y-4">
               <div className="space-y-3">
                 <label className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Reason</label>
                 <div className="grid grid-cols-1 gap-2">
-                  {['2 Absences', 'Failed Requirements', 'Voluntary Withdrawal', 'Others'].map((reason) => (
+                  {(String(dropReasonModal.statusToSet || '').toLowerCase() === 'rejected'
+                    ? ['Incomplete Requirements', 'Not Qualified', 'Failed Screening', 'Others']
+                    : ['2 Absences', 'Failed Requirements', 'Voluntary Withdrawal', 'Others']
+                  ).map((reason) => (
                     <button
                       key={reason}
                       onClick={() => setDropReasonModal(prev => ({ ...prev, reason }))}
@@ -4268,21 +5083,19 @@ const AdminDashboard = () => {
                 </div>
               </div>
 
-              {(dropReasonModal.reason === 'Others' || true) && (
-                <div className="space-y-2">
-                  <label className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    {dropReasonModal.reason === 'Others' ? 'Specify Reason' : 'Additional Remarks (Optional)'}
-                  </label>
-                  <textarea
-                    value={dropReasonModal.customReason}
-                    onChange={(e) => setDropReasonModal(prev => ({ ...prev, customReason: e.target.value }))}
-                    placeholder={dropReasonModal.reason === 'Others' ? 'Please specify the reason...' : 'Add any additional details...'}
-                    className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500/20 outline-none transition-all resize-none h-24 ${
-                      darkMode ? 'bg-gray-900 border-gray-700 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'
-                    }`}
-                  />
-                </div>
-              )}
+              <div className="space-y-2">
+                <label className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  {dropReasonModal.reason === 'Others' ? 'Specify Reason' : 'Additional Remarks (Optional)'}
+                </label>
+                <textarea
+                  value={dropReasonModal.customReason}
+                  onChange={(e) => setDropReasonModal(prev => ({ ...prev, customReason: e.target.value }))}
+                  placeholder={dropReasonModal.reason === 'Others' ? 'Please specify the reason...' : 'Add any additional details...'}
+                  className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500/20 outline-none transition-all resize-none h-24 ${
+                    darkMode ? 'bg-gray-900 border-gray-700 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'
+                  }`}
+                />
+              </div>
             </div>
 
             <div className={`px-6 py-4 border-t flex gap-3 ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-100 bg-gray-50'}`}>
@@ -4293,7 +5106,7 @@ const AdminDashboard = () => {
                 Cancel
               </button>
               <button
-                disabled={dropReasonModal.reason === 'Others' && !dropReasonModal.customReason.trim()}
+                disabled={!String(dropReasonModal.reason || '').trim() || (dropReasonModal.reason === 'Others' && !dropReasonModal.customReason.trim())}
                 onClick={() => {
                   const finalReason = dropReasonModal.reason === 'Others' 
                     ? dropReasonModal.customReason 
@@ -4302,9 +5115,9 @@ const AdminDashboard = () => {
                       : dropReasonModal.reason;
                   
                   if (dropReasonModal.type === 'registration') {
-                    handleUpdateRegistrationStatus(dropReasonModal.regId, 'dropped', finalReason);
+                    handleUpdateRegistrationStatus(dropReasonModal.regId, dropReasonModal.statusToSet || 'dropped', finalReason);
                   } else {
-                    executeUpdateAppStatus(dropReasonModal.appId, 'Drop', finalReason);
+                    executeUpdateAppStatus(dropReasonModal.appId, dropReasonModal.statusToSet || 'Drop', finalReason);
                   }
                   setDropReasonModal(prev => ({ ...prev, isOpen: false }));
                 }}
@@ -4312,7 +5125,11 @@ const AdminDashboard = () => {
                   darkMode ? 'bg-red-500 hover:bg-red-600 shadow-red-500/20' : 'bg-red-600 hover:bg-red-700 shadow-red-500/20'
                 }`}
               >
-                Confirm Drop
+                {dropReasonModal.type === 'registration'
+                  ? (String(dropReasonModal.statusToSet || '').toLowerCase() === 'rejected'
+                      ? 'Confirm Reject'
+                      : (String(dropReasonModal.statusToSet || '').toLowerCase() === 'cancelled' ? 'Confirm Cancel' : 'Confirm Drop'))
+                  : (String(dropReasonModal.statusToSet || '').toLowerCase() === 'rejected' ? 'Confirm Reject' : 'Confirm Drop')}
               </button>
             </div>
           </div>
@@ -4355,6 +5172,174 @@ const AdminDashboard = () => {
               >
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* View Pending Registration Modal */}
+      {viewingPendingRegistration && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className={`rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-300 ${darkMode ? 'bg-gray-800 ring-1 ring-white/10' : 'bg-white ring-1 ring-black/5'}`}>
+            <div className={`px-6 py-5 border-b flex items-center justify-between ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-100 bg-white'}`}>
+              <div>
+                <h3 className={`text-xl font-bold tracking-tight ${darkMode ? 'text-white' : 'text-gray-900'}`}>Registration Details</h3>
+                <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Review enrollment information</p>
+              </div>
+              <button
+                onClick={() => setViewingPendingRegistration(null)}
+                className={`p-2 rounded-lg transition-all ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-8 space-y-8 max-h-[70vh] overflow-y-auto">
+              {/* Applicant Info */}
+              <div className="flex items-start gap-4">
+                 <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold ring-4 ring-offset-2 shrink-0 overflow-hidden ${
+                    darkMode ? 'bg-blue-900/30 text-blue-300 ring-gray-700' : 'bg-blue-100 text-blue-600 ring-white'
+                 }`}>
+                    {viewingPendingRegistration.studentId?.profilePicture ? (
+                       <img 
+                          src={viewingPendingRegistration.studentId.profilePicture} 
+                          alt="Profile" 
+                          className="w-full h-full object-cover"
+                       />
+                    ) : (
+                       <span>{viewingPendingRegistration.studentId?.firstName?.[0]}{viewingPendingRegistration.studentId?.lastName?.[0]}</span>
+                    )}
+                 </div>
+                 <div className="flex-1">
+                    <h4 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                       {viewingPendingRegistration.studentId?.firstName} {viewingPendingRegistration.studentId?.lastName}
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                       <div className={`flex items-center gap-2 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                          <Mail className="w-4 h-4 opacity-70" />
+                          {viewingPendingRegistration.studentId?.email}
+                       </div>
+                       <div className={`flex items-center gap-2 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                          <Phone className="w-4 h-4 opacity-70" />
+                          {viewingPendingRegistration.studentId?.mobileNo}
+                       </div>
+                    </div>
+                 </div>
+              </div>
+
+              <div className={`h-px w-full ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}></div>
+
+              {/* Course Info */}
+              <div>
+                 <h5 className={`text-xs font-bold uppercase tracking-wider mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Course Information</h5>
+                 <div className={`p-4 rounded-xl border ${darkMode ? 'bg-gray-900/50 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
+                    <div className="flex justify-between items-start">
+                       <div>
+                          <p className={`font-bold ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>
+                             {viewingPendingRegistration.scheduleId?.courseTitle || viewingPendingRegistration.scheduleId?.title}
+                          </p>
+                          <p className={`text-sm mt-1 flex items-center gap-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                             <Calendar className="w-4 h-4 opacity-70" />
+                             {new Date(viewingPendingRegistration.scheduleId?.trainingDate).toLocaleDateString()}
+                          </p>
+                       </div>
+                       <div className={`text-right font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                          ₱{Number(viewingPendingRegistration.scheduleId?.fee || 0).toLocaleString()}
+                       </div>
+                    </div>
+                 </div>
+              </div>
+
+              {/* Payment Info */}
+              <div>
+                 <h5 className={`text-xs font-bold uppercase tracking-wider mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Payment Details</h5>
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className={`p-4 rounded-xl border ${darkMode ? 'bg-gray-900/50 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
+                       <p className={`text-xs mb-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Payment Mode</p>
+                       <p className={`font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>
+                          {viewingPendingRegistration.payment?.isOnline ? 'Online (GCash)' : 'Walk-in'}
+                       </p>
+                    </div>
+                    {viewingPendingRegistration.payment?.isOnline && (
+                       <div className={`p-4 rounded-xl border ${darkMode ? 'bg-gray-900/50 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
+                          <p className={`text-xs mb-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Reference Number</p>
+                          <p className={`font-mono font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>
+                             {viewingPendingRegistration.payment?.referenceNumber || 'N/A'}
+                          </p>
+                       </div>
+                    )}
+                 </div>
+                 
+                 {viewingPendingRegistration.payment?.isOnline && viewingPendingRegistration.payment?.proofOfPayment && (
+                    <div className="mt-4">
+                       <p className={`text-xs mb-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Proof of Payment</p>
+                       <div 
+                          className="relative h-48 w-full rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 cursor-pointer group"
+                          onClick={() => setZoomedImage(viewingPendingRegistration.payment.proofOfPayment)}
+                       >
+                          <img 
+                             src={viewingPendingRegistration.payment.proofOfPayment} 
+                             alt="Proof of Payment" 
+                             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
+                          />
+                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                             <div className="bg-black/50 text-white px-3 py-1.5 rounded-full text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm flex items-center gap-2">
+                                <Eye className="w-3.5 h-3.5" /> Click to Zoom
+                             </div>
+                          </div>
+                       </div>
+                    </div>
+                 )}
+              </div>
+            </div>
+
+            <div className={`px-6 py-4 border-t flex gap-3 ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-100 bg-gray-50'}`}>
+              <button
+                onClick={() => setViewingPendingRegistration(null)}
+                className={`px-4 py-2.5 rounded-xl font-bold text-sm transition-all ${
+                  darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                Close
+              </button>
+              <div className="flex-1 flex gap-3 justify-end">
+                 <button
+                   onClick={() => {
+                     // Open drop/reject modal instead of direct confirm
+                     setDropReasonModal({
+                        isOpen: true,
+                        appId: null,
+                        regId: viewingPendingRegistration._id,
+                        type: 'registration',
+                        statusToSet: 'rejected',
+                        reason: 'Incomplete Requirements',
+                        customReason: ''
+                     });
+                     setViewingPendingRegistration(null); // Close this modal
+                   }}
+                   className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-all shadow-lg active:scale-95 ${
+                      darkMode ? 'bg-red-500 text-white hover:bg-red-600 shadow-red-500/20' : 'bg-red-100 text-red-700 hover:bg-red-200'
+                   }`}
+                 >
+                   Reject
+                 </button>
+                 <button
+                   onClick={() => {
+                     setConfirmModal({
+                        isOpen: true,
+                        title: 'Approve Registration',
+                        message: `Are you sure you want to approve this registration?`,
+                        type: 'success',
+                        onConfirm: () => {
+                           handleUpdateRegistrationStatus(viewingPendingRegistration._id, 'active');
+                           setViewingPendingRegistration(null);
+                        }
+                     });
+                   }}
+                   className="px-6 py-2.5 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-green-500/30 hover:shadow-green-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                 >
+                   Approve Registration
+                 </button>
+              </div>
             </div>
           </div>
         </div>

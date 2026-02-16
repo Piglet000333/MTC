@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const CustomDatePicker = ({ label, value, onChange, darkMode }) => {
@@ -6,6 +7,9 @@ const CustomDatePicker = ({ label, value, onChange, darkMode }) => {
   const [currentDate, setCurrentDate] = useState(new Date()); // For navigation
   const [selectedDate, setSelectedDate] = useState(null); // Selected value
   const containerRef = useRef(null);
+  const menuRef = useRef(null);
+  const rafIdRef = useRef(null);
+  const [coords, setCoords] = useState({ top: 0, left: 0, width: 280 });
 
   // Initialize state from value prop
   useEffect(() => {
@@ -27,13 +31,52 @@ const CustomDatePicker = ({ label, value, onChange, darkMode }) => {
   // Close on click outside
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (containerRef.current && !containerRef.current.contains(event.target)) {
+      if (
+        containerRef.current && 
+        !containerRef.current.contains(event.target) &&
+        (!menuRef.current || !menuRef.current.contains(event.target))
+      ) {
         setIsOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const updatePosition = () => {
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const width = 280;
+      let left = rect.left + window.scrollX;
+      const margin = 12;
+      const maxLeft = window.scrollX + window.innerWidth - width - margin;
+      if (left > maxLeft) left = Math.max(window.scrollX + margin, maxLeft);
+      const top = rect.bottom + window.scrollY + 8;
+      setCoords({ top, left, width });
+    }
+  };
+
+  useEffect(() => {
+    const handleScrollOrResize = (event) => {
+      if (!isOpen) return;
+      if (menuRef.current && event?.target && menuRef.current.contains(event.target)) return;
+      if (rafIdRef.current) return;
+      rafIdRef.current = window.requestAnimationFrame(() => {
+        rafIdRef.current = null;
+        updatePosition();
+      });
+    };
+    window.addEventListener('resize', handleScrollOrResize);
+    window.addEventListener('scroll', handleScrollOrResize, true);
+    return () => {
+      window.removeEventListener('resize', handleScrollOrResize);
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+      if (rafIdRef.current) {
+        window.cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+    };
+  }, [isOpen]);
 
   const months = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -114,11 +157,11 @@ const CustomDatePicker = ({ label, value, onChange, darkMode }) => {
       days.push(
         <button
           key={day}
-          onClick={() => handleDateClick(day)}
-          className={`h-8 w-8 rounded-full flex items-center justify-center text-sm transition-colors
+        onClick={() => handleDateClick(day)}
+        className={`h-9 w-9 rounded-full flex items-center justify-center text-base transition-colors
             ${isSelected 
               ? (darkMode ? 'bg-blue-600 text-white' : 'bg-blue-600 text-white') 
-              : (darkMode ? 'hover:bg-gray-600 text-gray-200' : 'hover:bg-blue-50 text-gray-700')
+              : (darkMode ? 'text-gray-100 hover:bg-gray-700' : 'text-gray-800 hover:bg-blue-50')
             }
             ${!isSelected && isToday ? (darkMode ? 'text-blue-400 font-bold' : 'text-blue-600 font-bold') : ''}
           `}
@@ -137,7 +180,10 @@ const CustomDatePicker = ({ label, value, onChange, darkMode }) => {
       
       <div className="relative">
         <div 
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={() => {
+            if (!isOpen) updatePosition();
+            setIsOpen(!isOpen);
+          }}
           className={`w-full px-4 py-2 rounded-lg border flex items-center justify-between cursor-pointer transition-colors
             ${darkMode 
               ? 'bg-gray-700 border-gray-600 text-white hover:border-gray-500' 
@@ -146,67 +192,70 @@ const CustomDatePicker = ({ label, value, onChange, darkMode }) => {
             ${isOpen ? 'ring-2 ring-blue-500 border-transparent' : ''}
           `}
         >
-          <span className={!value ? 'text-gray-400' : ''}>
+          <span className={!value ? (darkMode ? 'text-gray-500' : 'text-gray-400') : ''}>
             {value ? new Date(value).toLocaleDateString() : 'mm/dd/yyyy'}
           </span>
           <Calendar size={18} className={darkMode ? 'text-gray-400' : 'text-gray-500'} />
         </div>
 
-        {isOpen && (
-          <div className={`absolute z-50 mt-2 p-4 rounded-xl shadow-xl border w-[280px]
-            ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}
-          `}>
-            {/* Header */}
-            <div className="flex items-center justify-between mb-4">
-              <button 
-                onClick={handlePrevMonth}
-                className={`p-1 rounded-full hover:bg-opacity-20 ${darkMode ? 'hover:bg-gray-400 text-gray-300' : 'hover:bg-gray-200 text-gray-600'}`}
-              >
-                <ChevronLeft size={20} />
-              </button>
-              
-              <span className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-                {months[currentDate.getMonth()]} {currentDate.getFullYear()}
-              </span>
-              
-              <button 
-                onClick={handleNextMonth}
-                className={`p-1 rounded-full hover:bg-opacity-20 ${darkMode ? 'hover:bg-gray-400 text-gray-300' : 'hover:bg-gray-200 text-gray-600'}`}
-              >
-                <ChevronRight size={20} />
-              </button>
-            </div>
+        {createPortal(
+          isOpen ? (
+            <div
+              ref={menuRef}
+              style={{ position: 'absolute', top: coords.top, left: coords.left, width: coords.width, zIndex: 9999 }}
+              className={`mt-2 p-4 rounded-xl shadow-xl border
+                ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}
+              `}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <button 
+                  onClick={handlePrevMonth}
+                  className={`p-1 rounded-full hover:bg-opacity-20 ${darkMode ? 'hover:bg-gray-400 text-gray-300' : 'hover:bg-gray-200 text-gray-600'}`}
+                >
+                  <ChevronLeft size={20} />
+                </button>
+                
+                <span className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                  {months[currentDate.getMonth()]} {currentDate.getFullYear()}
+                </span>
+                
+                <button 
+                  onClick={handleNextMonth}
+                  className={`p-1 rounded-full hover:bg-opacity-20 ${darkMode ? 'hover:bg-gray-400 text-gray-300' : 'hover:bg-gray-200 text-gray-600'}`}
+                >
+                  <ChevronRight size={20} />
+                </button>
+              </div>
 
-            {/* Weekdays */}
-            <div className="grid grid-cols-7 mb-2">
-              {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
-                <div key={day} className={`text-center text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {day}
-                </div>
-              ))}
-            </div>
+              <div className="grid grid-cols-7 mb-2">
+                {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
+                  <div key={day} className={`text-center text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    {day}
+                  </div>
+                ))}
+              </div>
 
-            {/* Days Grid */}
-            <div className="grid grid-cols-7 gap-y-1 justify-items-center">
-              {renderCalendar()}
-            </div>
+              <div className="grid grid-cols-7 gap-y-1 justify-items-center">
+                {renderCalendar()}
+              </div>
 
-            {/* Footer */}
-            <div className="flex justify-between mt-4 pt-3 border-t border-gray-200/20">
-              <button 
-                onClick={clearDate}
-                className="text-sm text-blue-500 hover:text-blue-600 font-medium"
-              >
-                Clear
-              </button>
-              <button 
-                onClick={setToday}
-                className="text-sm text-blue-500 hover:text-blue-600 font-medium"
-              >
-                Today
-              </button>
+              <div className="flex justify-between mt-4 pt-3 border-t border-gray-200/20">
+                <button 
+                  onClick={clearDate}
+                  className="text-sm text-blue-500 hover:text-blue-600 font-medium"
+                >
+                  Clear
+                </button>
+                <button 
+                  onClick={setToday}
+                  className="text-sm text-blue-500 hover:text-blue-600 font-medium"
+                >
+                  Today
+                </button>
+              </div>
             </div>
-          </div>
+          ) : null,
+          document.body
         )}
       </div>
     </div>
