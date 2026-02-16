@@ -14,7 +14,7 @@ const connectDB = async () => {
     console.log(`mongoDB connected successfully: ${conn.connection.host}`);
     return true;
   } catch (error) {
-    console.log('Error connecting to DB (primary). Check your MongoDB Atlas IP Whitelist (Network Access) or Internet connection.', error.message);
+    console.error('Error connecting to DB (primary). Check your MongoDB Atlas IP Whitelist (Network Access) or Internet connection.', error.message);
   }
 
   if (fallback) {
@@ -27,11 +27,11 @@ const connectDB = async () => {
       console.log(`mongoDB connected using fallback: ${conn2.connection.host}`);
       return true;
     } catch (error2) {
-      console.log('error connecting to DB (fallback): ', error2);
+      console.error('error connecting to DB (fallback): ', error2);
     }
   }
 
-  console.log('DB connection failed (primary and fallback).');
+  console.error('DB connection failed (primary and fallback).');
   return false;
 };
 

@@ -37,6 +37,11 @@ module.exports = app;
 
 // Connect to DB before listening (only if run directly)
 if (require.main === module) {
+  if (!process.env.MONGODB_URI) {
+    console.error('FATAL ERROR: MONGODB_URI is not defined in environment variables.');
+    process.exit(1);
+  }
+
   connectDB().then((connected) => {
     if (!connected) {
       console.error("❌ Failed to connect to DB. Server exiting...");

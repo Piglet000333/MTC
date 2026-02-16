@@ -40,32 +40,24 @@ const registrationSchema = new mongoose.Schema(
 registrationSchema.index({ studentId: 1, scheduleId: 1 }, { unique: true });
 
 // Prevent excess registration over capacity
-registrationSchema.pre('save', async function(next) {
+registrationSchema.pre('save', async function() {
   if (this.status) {
     this.status = String(this.status).toLowerCase();
   }
   if (this.isNew) {
-    try {
-      const Schedule = mongoose.model('Schedule');
-      const schedule = await Schedule.findById(this.scheduleId);
-      
-      if (!schedule) {
-        return next(new Error('Schedule not found'));
-      }
-
-      const count = await this.constructor.countDocuments({
-        scheduleId: this.scheduleId,
-        status: { $in: ['active', 'pending'] }
-      });
-
-      if (count >= schedule.capacity) {
-        return next(new Error('Schedule is full. Capacity reached.'));
-      }
-    } catch (error) {
-      return next(error);
+    const Schedule = mongoose.model('Schedule');
+    const schedule = await Schedule.findById(this.scheduleId);
+    if (!schedule) {
+      throw new Error('Schedule not found');
+    }
+    const count = await this.constructor.countDocuments({
+      scheduleId: this.scheduleId,
+      status: { $in: ['active', 'pending'] }
+    });
+    if (count >= schedule.capacity) {
+      throw new Error('Schedule is full. Capacity reached.');
     }
   }
-  next();
 });
 
 module.exports = mongoose.model('Registration', registrationSchema);
