@@ -17,10 +17,8 @@ const fetchWithTimeout = async (resource, options = {}) => {
     clearTimeout(id);
     if (response.status === 401) {
       try { await response.clone().text(); } catch {}
-      window.alert('Your session has expired. Please log in again.');
-      try { localStorage.removeItem('studentToken'); } catch {}
-      try { localStorage.removeItem('studentInfo'); } catch {}
-      window.location.href = '/student/login';
+      toast.error('Your session expired.');
+      window.dispatchEvent(new CustomEvent('studentSessionExpired'));
       throw new Error('SESSION_EXPIRED');
     }
     return response;
@@ -237,6 +235,7 @@ export default function StudentApp() {
   const [hiddenSchedules, setHiddenSchedules] = useState([]);
   const [hiddenApplications, setHiddenApplications] = useState([]);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [showSessionExpiredModal, setShowSessionExpiredModal] = useState(false);
   const authedFetch = async (input, init = {}) => {
     const token = localStorage.getItem('studentToken');
     const headers = {
@@ -246,10 +245,8 @@ export default function StudentApp() {
     const res = await window.fetch(input, { ...init, headers });
     if (res.status === 401) {
       try { await res.clone().text(); } catch {}
-      window.alert('Your session has expired. Please log in again.');
-      try { localStorage.removeItem('studentToken'); } catch {}
-      try { localStorage.removeItem('studentInfo'); } catch {}
-      window.location.href = '/student/login';
+      toast.error('Your session expired.');
+      setShowSessionExpiredModal(true);
       throw new Error('SESSION_EXPIRED');
     }
     return res;
@@ -259,6 +256,17 @@ export default function StudentApp() {
     const token = localStorage.getItem('studentToken');
     return { ...headers, ...(token ? { Authorization: `Bearer ${token}` } : {}) };
   };
+  useEffect(() => {
+    const handler = () => setShowSessionExpiredModal(true);
+    window.addEventListener('studentSessionExpired', handler);
+    return () => window.removeEventListener('studentSessionExpired', handler);
+  }, []);
+  const phToday = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(new Date());
 
   useEffect(() => {
      // Check for payment return
@@ -1009,7 +1017,7 @@ export default function StudentApp() {
     if (!registrationForm.scheduleId) errors.scheduleId = 'Please select a Training Course.';
     if (!registrationForm.firstName.trim()) errors.firstName = 'Please enter First Name.';
     if (!registrationForm.lastName.trim()) errors.lastName = 'Please enter Last Name.';
-    if (!registrationForm.email.trim()) errors.email = 'Please enter Email Address.';
+    // Email is fixed to login email; no manual validation here
     if (!registrationForm.dateOfBirth) errors.dateOfBirth = 'Please enter Date of Birth.';
     if (!registrationForm.completeAddress.trim()) errors.completeAddress = 'Please enter Complete Address.';
     if (!registrationForm.sex) errors.sex = 'Please select Sex.';
@@ -1103,8 +1111,7 @@ export default function StudentApp() {
             firstName: registrationForm.firstName.trim(),
             lastName: registrationForm.lastName.trim(),
             middleName: registrationForm.middleName.trim(),
-            // Don't update email if it's the same to avoid unique constraint issues
-            ...(registrationForm.email.trim() !== user.email ? { email: registrationForm.email.trim() } : {}),
+            // Email is fixed to login email; do not update via registration form
             mobileNo: mobile || undefined,
             telephoneNo: registrationForm.telephoneNo ? registrationForm.telephoneNo.trim() : undefined,
             age: registrationForm.age ? ageNum : undefined,
@@ -1710,9 +1717,11 @@ export default function StudentApp() {
                   <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Registration Date</label>
                   <input 
                      type="date" 
-                     className={`w-full border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all ${darkMode ? 'bg-gray-800 border-gray-600 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-400 text-gray-900'} ${!user ? 'opacity-50 cursor-not-allowed' : ''}`} 
-                     min={new Date().toISOString().split('T')[0]}
-                     disabled={!user}
+                     className={`w-full border rounded-xl px-4 py-2.5 ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-gray-50 border-gray-400 text-gray-900'} cursor-not-allowed`} 
+                     value={phToday}
+                     min={phToday}
+                     max={phToday}
+                     disabled={true}
                   />
                </div>
                <div>
@@ -1894,18 +1903,15 @@ export default function StudentApp() {
                     }} />
                     {formErrors.mobileNo && <p className="text-xs text-red-500 mt-1">{formErrors.mobileNo}</p>}
                  </div>
-                 <div>
-                    <input type="email" placeholder="Email Address" disabled={!user} className={`w-full border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 ${darkMode ? 'bg-gray-800 border-gray-600 text-white placeholder-gray-500' : 'bg-white border-gray-400 text-gray-900'} ${formErrors.email ? 'border-red-300' : ''} ${!user ? 'opacity-50 cursor-not-allowed' : ''}`} value={registrationForm.email} onChange={(e) => {
-                       const v = e.target.value;
-                       setRegistrationForm(f => ({ ...f, email: v }));
-                       if (v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) {
-                          setFormErrors(prev => ({ ...prev, email: 'Invalid email' }));
-                       } else {
-                          setFormErrors(prev => { const c = { ...prev }; delete c.email; return c; });
-                       }
-                    }} />
-                    {formErrors.email && <p className="text-xs text-red-500 mt-1">{formErrors.email}</p>}
-                 </div>
+                <div>
+                   <input
+                     type="email"
+                     placeholder="Email Address"
+                     disabled={true}
+                     className={`w-full border rounded-xl px-4 py-2.5 ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-gray-100 border-gray-300 text-gray-700'} cursor-not-allowed`}
+                     value={user?.email || registrationForm.email}
+                   />
+                </div>
               </div>
            </div>
 
@@ -2558,6 +2564,36 @@ export default function StudentApp() {
            </div>
         </div>
       )}
+      {showSessionExpiredModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-[#0f172a] border border-gray-700' : 'bg-white border border-gray-200'}`}>
+            <div className="flex items-center gap-3 mb-4">
+              <Clock className={`w-6 h-6 ${darkMode ? 'text-yellow-300' : 'text-yellow-600'}`} />
+              <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Session Expired</h3>
+            </div>
+            <p className={`${darkMode ? 'text-gray-300' : 'text-gray-700'} mb-6`}>Your session has expired.</p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowSessionExpiredModal(false)}
+                className={`px-5 py-2.5 rounded-xl ${darkMode ? 'bg-gray-700 text-white hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'} transition`}
+              >
+                OK
+              </button>
+              <button
+                onClick={() => {
+                  try { localStorage.removeItem('studentToken'); } catch {}
+                  try { localStorage.removeItem('studentInfo'); } catch {}
+                  setShowSessionExpiredModal(false);
+                  window.location.href = '/student/login';
+                }}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-red-500 to-rose-600 text-white font-semibold shadow hover:opacity-90 transition"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <Toaster position="top-right" />
     </div>
   );
@@ -2665,11 +2701,7 @@ export default function StudentApp() {
     if (!assessmentForm.civilStatus) errors.civilStatus = "Civil Status is required.";
     
     // Contact
-    if (!assessmentForm.email) {
-      errors.email = "Email is required.";
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(assessmentForm.email)) {
-      errors.email = "Invalid email format.";
-    }
+    // Email is fixed to login email; no manual validation here
     if (!assessmentForm.mobile) {
       errors.mobile = "Mobile Number is required.";
     } else if (assessmentForm.mobile.length !== 11) {
@@ -3223,13 +3255,9 @@ export default function StudentApp() {
                       <input 
                         type="email" 
                         placeholder="Email" 
-                        disabled={!user}
-                        className={`w-full border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all ${darkMode ? 'bg-gray-800 border-gray-600 text-white placeholder-gray-500' : 'bg-white border-gray-400 text-gray-900'} ${assessmentErrors.email ? 'border-red-500 ring-2 ring-red-200' : ''} ${!user ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        value={assessmentForm.email} 
-                        onChange={e => {
-                          setAssessmentForm({...assessmentForm, email: e.target.value});
-                          if (e.target.value) setAssessmentErrors(prev => { const c = {...prev}; delete c.email; return c; });
-                        }} 
+                        disabled={true}
+                        className={`w-full border rounded-xl px-4 py-2.5 ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-gray-100 border-gray-300 text-gray-700'} cursor-not-allowed`}
+                        value={user?.email || assessmentForm.email}
                       />
                       {assessmentErrors.email && <p className="text-sm text-red-500 mt-1">{assessmentErrors.email}</p>}
                     </div>

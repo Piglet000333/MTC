@@ -120,6 +120,7 @@ const AdminDashboard = () => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showSessionExpiredModal, setShowSessionExpiredModal] = useState(false);
 
   // Dark Mode Effect
   useEffect(() => {
@@ -171,6 +172,11 @@ const AdminDashboard = () => {
     const interval = setInterval(loadNotifications, 10000); // Poll every 10s
     return () => clearInterval(interval);
   }, [loadNotifications, loadAdminProfile]);
+  useEffect(() => {
+    const handler = () => setShowSessionExpiredModal(true);
+    window.addEventListener('adminSessionExpired', handler);
+    return () => window.removeEventListener('adminSessionExpired', handler);
+  }, []);
 
   const loadData = React.useCallback(async (isBackground = false) => {
     if (!isBackground) setLoading(true);
@@ -5430,6 +5436,36 @@ const AdminDashboard = () => {
                    Approve Registration
                  </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {showSessionExpiredModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-[#0f172a] border border-gray-700' : 'bg-white border border-gray-200'}`}>
+            <div className="flex items-center gap-3 mb-4">
+              <Clock className={`w-6 h-6 ${darkMode ? 'text-yellow-300' : 'text-yellow-600'}`} />
+              <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Session Expired</h3>
+            </div>
+            <p className={`${darkMode ? 'text-gray-300' : 'text-gray-700'} mb-6`}>Your admin session has expired.</p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowSessionExpiredModal(false)}
+                className={`px-5 py-2.5 rounded-xl ${darkMode ? 'bg-gray-700 text-white hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'} transition`}
+              >
+                OK
+              </button>
+              <button
+                onClick={() => {
+                  localStorage.removeItem('adminToken');
+                  localStorage.removeItem('adminInfo');
+                  setShowSessionExpiredModal(false);
+                  window.location.href = '/admin/login';
+                }}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-red-500 to-rose-600 text-white font-semibold shadow hover:opacity-90 transition"
+              >
+                Logout
+              </button>
             </div>
           </div>
         </div>
