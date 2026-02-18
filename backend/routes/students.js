@@ -27,7 +27,7 @@ const signStudentToken = (studentId) => {
   return jwt.sign(
     { sub: studentId, role: 'student' },
     process.env.JWT_SECRET || 'secret',
-    { expiresIn: '7d' }
+    { expiresIn: '15m' }
   );
 };
 
@@ -194,7 +194,7 @@ router.post('/forgot-password', async (req, res) => {
     // Create Reset Link
     // Assuming frontend runs on port 3000 by default in dev, or same domain in prod
     // We should ideally use an ENV var for FRONTEND_URL
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const frontendUrl = process.env.FRONTEND_URL || 'https://mtc-portal.vercel.app';
     const resetLink = `${frontendUrl}/student/reset-password/${resetToken}`;
 
     const mailOptions = {

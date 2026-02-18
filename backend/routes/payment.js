@@ -150,7 +150,7 @@ router.post('/create-qr', async (req, res) => {
         data: {
             attributes: {
                 payment_method: pmId,
-                return_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/student` // Not used for QR scan but required
+                return_url: `${process.env.FRONTEND_URL || 'https://mtc-portal.vercel.app'}/student`
             }
         }
     };

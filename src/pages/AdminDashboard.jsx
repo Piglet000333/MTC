@@ -63,7 +63,8 @@ const AdminDashboard = () => {
   const [scheduleErrors, setScheduleErrors] = useState({});
   const [salesSearch, setSalesSearch] = useState('');
   const [salesDateRange, setSalesDateRange] = useState({ from: '', to: '' });
-  const [salesAssessmentFilter, setSalesAssessmentFilter] = useState('');
+  const [salesItemFilter, setSalesItemFilter] = useState('');
+  const [salesTypeFilter, setSalesTypeFilter] = useState(''); // '' | 'training' | 'assessment'
   const [salesPage, setSalesPage] = useState(1);
   const SALES_ITEMS_PER_PAGE = 10;
 
@@ -2106,7 +2107,7 @@ const AdminDashboard = () => {
 
   // --- SALES REPORTS SECTION ---
   const renderSalesReports = () => {
-    // Calculate Data
+    // Calculate Data (Assessments Only)
     const salesData = assessments.map(assessment => {
       // Clean fee string (remove 'P', ',', spaces)
       const feeString = assessment.fee ? String(assessment.fee).replace(/[^0-9.]/g, '') : '0';
@@ -2115,7 +2116,7 @@ const AdminDashboard = () => {
       // Count applications for this assessment
       const apps = assessmentApps.filter(app => {
          const appId = app.assessmentId?._id || app.assessmentId;
-         return appId === assessment._id && ['Pending', 'Approved'].includes(app.status);
+         return appId === assessment._id && ['Pending', 'Approved', 'Completed'].includes(app.status);
       });
 
       const totalApps = apps.length;
@@ -2131,13 +2132,25 @@ const AdminDashboard = () => {
       };
     });
 
-    const totalRevenue = salesData.reduce((sum, item) => sum + item.revenue, 0);
-    const totalSales = salesData.reduce((sum, item) => sum + item.count, 0);
+    // Calculate Training Revenue
+    const trainingRevenue = registrations
+      .filter(reg => ['active', 'completed'].includes(reg.status))
+      .reduce((sum, reg) => {
+        const schedule = schedules.find(s => s._id === (reg.scheduleId?._id || reg.scheduleId));
+        return sum + (schedule?.price || 0);
+      }, 0);
+
+    const assessmentRevenue = salesData.reduce((sum, item) => sum + item.revenue, 0);
+    const totalRevenue = assessmentRevenue + trainingRevenue;
+    const totalSales = salesData.reduce((sum, item) => sum + item.count, 0) + registrations.filter(r => ['active', 'completed'].includes(r.status)).length;
+    
+    // Top Performer (Assessment or Training)
+    // Note: To simplify, we keep top performer as assessment based for now, or update logic if needed.
     const topPerformer = salesData.reduce((prev, current) => (prev.revenue > current.revenue) ? prev : current, { title: 'N/A', revenue: 0 });
 
-    // Prepare Transaction Data
-    const allTransactions = assessmentApps
-      .filter(app => ['Pending', 'Approved'].includes(app.status))
+    // Prepare Transaction Data (Assessments)
+    const assessmentTransactions = assessmentApps
+      .filter(app => ['Pending', 'Approved', 'Completed'].includes(app.status))
       .map(app => {
         const assessment = assessments.find(a => a._id === (app.assessmentId?._id || app.assessmentId));
         const feeString = assessment?.fee ? String(assessment.fee).replace(/[^0-9.]/g, '') : '0';
@@ -2164,22 +2177,70 @@ const AdminDashboard = () => {
           studentName: studentName,
           firstName: firstName,
           lastName: lastName,
-          assessmentTitle: assessment?.title || app.assessmentTitle || 'Unknown Assessment',
-          assessmentId: assessment?._id || app.assessmentId,
+          title: assessment?.title || app.assessmentTitle || 'Unknown Assessment',
+          itemId: assessment?._id || app.assessmentId,
           dateObj: dateObj,
           date: dateObj.toLocaleDateString(),
           time: dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           fee: fee,
-          status: app.status
+          status: app.status,
+          type: 'assessment'
         };
-      })
+      });
+
+    // Prepare Transaction Data (Paid Training)
+    const trainingTransactions = registrations
+      .filter(reg => ['active', 'completed'].includes(reg.status))
+      .map(reg => {
+        const schedule = schedules.find(s => s._id === (reg.scheduleId?._id || reg.scheduleId));
+        const fee = schedule?.price || 0;
+
+        let studentName = 'Unknown';
+        let firstName = '';
+        let lastName = '';
+
+        if (reg.studentId?.name) {
+           firstName = reg.studentId.name.firstname;
+           lastName = reg.studentId.name.surname;
+           studentName = `${firstName} ${lastName}`;
+        }
+
+        const dateObj = new Date(reg.createdAt);
+
+        return {
+          id: reg._id,
+          studentName: studentName,
+          firstName: firstName,
+          lastName: lastName,
+          title: schedule?.courseTitle || 'Unknown Course',
+          itemId: schedule?._id || reg.scheduleId,
+          dateObj: dateObj,
+          date: dateObj.toLocaleDateString(),
+          time: dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          fee: fee,
+          status: reg.status,
+          type: 'training'
+        };
+      });
+
+    const allTransactions = [...assessmentTransactions, ...trainingTransactions]
       .filter(t => {
+        // Type Filter
+        if (salesTypeFilter && t.type !== salesTypeFilter) return false;
+
         // Search Filter
         const matchesSearch = t.studentName.toLowerCase().includes(salesSearch.toLowerCase()) ||
-          t.assessmentTitle.toLowerCase().includes(salesSearch.toLowerCase());
+          t.title.toLowerCase().includes(salesSearch.toLowerCase());
         
-        // Assessment Dropdown Filter
-        const matchesAssessment = salesAssessmentFilter ? t.assessmentId === salesAssessmentFilter : true;
+        // Item Filter
+        let matchesItem = true;
+        if (salesItemFilter) {
+           if (salesTypeFilter === 'assessment') {
+              matchesItem = t.itemId === salesItemFilter;
+           } else if (salesTypeFilter === 'training') {
+              matchesItem = t.title === salesItemFilter;
+           }
+        }
 
         // Date Range Filter
         let matchesDate = true;
@@ -2194,7 +2255,7 @@ const AdminDashboard = () => {
           if (t.dateObj > toDate) matchesDate = false;
         }
 
-        return matchesSearch && matchesAssessment && matchesDate;
+        return matchesSearch && matchesItem && matchesDate;
       })
       .sort((a, b) => b.dateObj - a.dateObj); // Sort by newest first
 
@@ -2205,12 +2266,13 @@ const AdminDashboard = () => {
 
     const downloadExcel = () => {
       let csvContent = "data:text/csv;charset=utf-8,";
-      csvContent += "Student Name,Assessment,Fee,Qty,Amount,Date,Time\n";
+      csvContent += "Student Name,Type,Item / Assessment,Fee,Qty,Amount,Date,Time\n";
 
       allTransactions.forEach(t => {
         const row = [
           t.studentName,
-          t.assessmentTitle,
+          t.type === 'assessment' ? 'Assessment' : 'Training',
+          t.title,
           t.fee,
           1,
           t.fee,
@@ -2261,7 +2323,7 @@ const AdminDashboard = () => {
 
            <div className={`p-6 rounded-2xl shadow-sm border transition-all hover:shadow-md ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
               <div className="flex items-center justify-between mb-4">
-                 <h3 className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Assessments Sold</h3>
+                 <h3 className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total Transactions</h3>
                  <div className="p-2.5 bg-blue-100 text-blue-600 rounded-xl">
                     <Award className="w-6 h-6" />
                  </div>
@@ -2273,7 +2335,7 @@ const AdminDashboard = () => {
 
            <div className={`p-6 rounded-2xl shadow-sm border transition-all hover:shadow-md ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
               <div className="flex items-center justify-between mb-4">
-                 <h3 className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Top Performer</h3>
+                 <h3 className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Top Assessment</h3>
                  <div className="p-2.5 bg-purple-100 text-purple-600 rounded-xl">
                     <Award className="w-6 h-6" />
                  </div>
@@ -2289,7 +2351,7 @@ const AdminDashboard = () => {
 
         {/* Filters Section */}
         <div className={`p-6 rounded-2xl shadow-sm border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
             <div className="relative z-20">
                <CustomDatePicker 
                  label="From Date"
@@ -2309,17 +2371,40 @@ const AdminDashboard = () => {
             </div>
 
             <div className="space-y-1">
-              <label className={`text-xs font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Filter by Assessment</label>
+              <label className={`text-xs font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Filter by Type</label>
               <CustomDropdown
                 options={[
-                  { value: '', label: 'All Assessments' },
-                  ...assessments.map(a => ({ value: a._id, label: a.title }))
+                  { value: '', label: 'All Types' },
+                  { value: 'assessment', label: 'Assessment' },
+                  { value: 'training', label: 'Paid Training' }
                 ]}
-                value={salesAssessmentFilter}
-                onChange={(val) => { setSalesAssessmentFilter(val); setSalesPage(1); }}
-                placeholder="All Assessments"
+                value={salesTypeFilter}
+                onChange={(val) => { setSalesTypeFilter(val); setSalesItemFilter(''); setSalesPage(1); }}
+                placeholder="All Types"
                 darkMode={darkMode}
                 className="w-full min-w-[200px]"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className={`text-xs font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                {salesTypeFilter === 'assessment' ? 'Filter by Assessment' : salesTypeFilter === 'training' ? 'Filter by Course' : 'Filter by Item'}
+              </label>
+              <CustomDropdown
+                options={[
+                  { value: '', label: salesTypeFilter === 'assessment' ? 'All Assessments' : salesTypeFilter === 'training' ? 'All Paid Training' : 'All Items' },
+                  ...(salesTypeFilter === 'assessment' 
+                      ? assessments.map(a => ({ value: a._id, label: a.title }))
+                      : salesTypeFilter === 'training'
+                        ? [...new Set(schedules.map(s => s.courseTitle).filter(Boolean))].sort().map(title => ({ value: title, label: title }))
+                        : [])
+                ]}
+                value={salesItemFilter}
+                onChange={(val) => { setSalesItemFilter(val); setSalesPage(1); }}
+                placeholder={salesTypeFilter === 'assessment' ? 'All Assessments' : salesTypeFilter === 'training' ? 'All Paid Training' : 'All Items'}
+                darkMode={darkMode}
+                className="w-full min-w-[200px]"
+                disabled={!salesTypeFilter}
               />
             </div>
           </div>
@@ -2330,14 +2415,14 @@ const AdminDashboard = () => {
           <div className={`px-6 py-5 border-b flex flex-col sm:flex-row justify-between items-center gap-4 ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
              <div className="flex items-center gap-2">
                <h3 className={`text-xl font-bold tracking-tight ${darkMode ? 'text-white' : 'text-gray-900'}`}>Transaction History</h3>
-               {salesAssessmentFilter && <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold">Filtered</span>}
+               {(salesItemFilter || salesTypeFilter) && <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold">Filtered</span>}
              </div>
 
             {/* Search Bar */}
             <div className="relative w-full sm:w-72">
               <input
                 type="text"
-                placeholder="Search student or assessment..."
+                placeholder="Search student or item..."
                 value={salesSearch}
                 onChange={(e) => { setSalesSearch(e.target.value); setSalesPage(1); }}
                 className={`w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all ${
@@ -2355,7 +2440,7 @@ const AdminDashboard = () => {
               <thead className={darkMode ? 'bg-gray-900/50' : 'bg-gray-50/80'}>
                 <tr>
                   <th className={`px-6 py-4 text-left text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Student Name</th>
-                  <th className={`px-6 py-4 text-left text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Assessment</th>
+                  <th className={`px-6 py-4 text-left text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Item / Assessment</th>
                   <th className={`px-6 py-4 text-left text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Date & Time</th>
                   <th className={`px-6 py-4 text-center text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Qty</th>
                   <th className={`px-6 py-4 text-right text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Amount</th>
@@ -2371,15 +2456,20 @@ const AdminDashboard = () => {
                          }`}>
                             {t.firstName?.[0]}{t.lastName?.[0]}
                          </div>
-                         <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                           {t.studentName}
-                         </span>
+                         <div className="flex flex-col">
+                           <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                             {t.studentName}
+                           </span>
+                           <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                             {t.type === 'training' ? 'Training' : 'Assessment'}
+                           </span>
+                         </div>
                       </div>
                     </td>
                     <td className={`px-6 py-4 whitespace-nowrap text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                       <div className="flex items-center gap-2">
                         <BookOpen className={`w-4 h-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
-                        {t.assessmentTitle}
+                        {t.title}
                       </div>
                     </td>
                     <td className={`px-6 py-4 whitespace-nowrap text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -2405,7 +2495,7 @@ const AdminDashboard = () => {
                          <div className={`p-4 rounded-full ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
                            <Search className="w-6 h-6 opacity-50" />
                          </div>
-                         <p>{salesSearch || salesDateRange.from || salesDateRange.to || salesAssessmentFilter ? 'No matching transactions found' : 'No transaction history available'}</p>
+                         <p>{salesSearch || salesDateRange.from || salesDateRange.to || salesItemFilter || salesTypeFilter ? 'No matching transactions found' : 'No transaction history available'}</p>
                        </div>
                      </td>
                    </tr>
