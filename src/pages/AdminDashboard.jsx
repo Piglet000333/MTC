@@ -5,7 +5,7 @@ import { Home, UserPlus, Calendar, Clock, Award, Plus, Edit, Trash2, Search, Log
 import { useNavigate } from 'react-router-dom';
 import CustomDatePicker from '../components/CustomDatePicker';
 import CustomDropdown from '../components/CustomDropdown';
-import MuiTimePicker from '../components/MuiTimePicker';
+import CustomTimePicker from '../components/CustomTimePicker';
 import AdminStats from '../components/admin/AdminStats';
 import RecentStudents from '../components/admin/RecentStudents';
 import StudentManager from '../components/admin/StudentManager';
@@ -3007,13 +3007,13 @@ const AdminDashboard = () => {
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <MuiTimePicker
+                <CustomTimePicker
                   label="Publish Time"
                   value={announcementForm.publishTime}
                   onChange={(val) => setAnnouncementForm({ ...announcementForm, publishTime: val })}
                   darkMode={darkMode}
                 />
-                <MuiTimePicker
+                <CustomTimePicker
                   label="Expiry Time (Optional)"
                   value={announcementForm.expiryTime}
                   onChange={(val) => setAnnouncementForm({ ...announcementForm, expiryTime: val })}
