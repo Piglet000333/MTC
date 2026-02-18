@@ -15,6 +15,14 @@ const fetchWithTimeout = async (resource, options = {}) => {
       signal: controller.signal  
     });
     clearTimeout(id);
+    if (response.status === 401) {
+      try { await response.clone().text(); } catch {}
+      window.alert('Your session has expired. Please log in again.');
+      try { localStorage.removeItem('studentToken'); } catch {}
+      try { localStorage.removeItem('studentInfo'); } catch {}
+      window.location.href = '/student/login';
+      throw new Error('SESSION_EXPIRED');
+    }
     return response;
   } catch (error) {
     clearTimeout(id);
@@ -229,13 +237,22 @@ export default function StudentApp() {
   const [hiddenSchedules, setHiddenSchedules] = useState([]);
   const [hiddenApplications, setHiddenApplications] = useState([]);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const authedFetch = (input, init = {}) => {
+  const authedFetch = async (input, init = {}) => {
     const token = localStorage.getItem('studentToken');
     const headers = {
       ...(init.headers || {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {})
     };
-    return window.fetch(input, { ...init, headers });
+    const res = await window.fetch(input, { ...init, headers });
+    if (res.status === 401) {
+      try { await res.clone().text(); } catch {}
+      window.alert('Your session has expired. Please log in again.');
+      try { localStorage.removeItem('studentToken'); } catch {}
+      try { localStorage.removeItem('studentInfo'); } catch {}
+      window.location.href = '/student/login';
+      throw new Error('SESSION_EXPIRED');
+    }
+    return res;
   };
   const fetch = authedFetch;
   const withStudentAuthHeaders = (headers = {}) => {
