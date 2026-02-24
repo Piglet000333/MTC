@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { toast, Toaster } from 'react-hot-toast';
 import { User, UserPlus, Calendar, FileCheck, Search, Eye, Users, BookOpen, Clock, AlertCircle, CheckCircle, ChevronRight, Briefcase, GraduationCap, Phone, MapPin, LogOut, Bell, ChevronDown, Settings, Mail, Camera, Save, X, Loader2, Trash2, CreditCard, Wallet, Megaphone, Sun, Moon, Award, Menu } from 'lucide-react';
 import CustomDropdown from '../components/CustomDropdown';
+import ChatWidget from '../components/ChatWidget';
 
 // Helper for fetch with timeout
 const fetchWithTimeout = async (resource, options = {}) => {
@@ -2594,7 +2595,6 @@ export default function StudentApp() {
           </div>
         </div>
       )}
-      <Toaster position="top-right" />
     </div>
   );
 };
@@ -4137,6 +4137,10 @@ export default function StudentApp() {
             </p>
           </div>
         </div>
+      )}
+      <Toaster position="top-right" />
+      { !((activeSection === 'assessment' && assessmentStep > 0) || (activeSection === 'registrations' && !!activeSubSection)) && (
+        <ChatWidget darkMode={darkMode} />
       )}
     </div>
   );

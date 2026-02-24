@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { ShieldCheck, ArrowRight, Loader2 } from 'lucide-react';
+import ChatWidget from '../components/ChatWidget';
 
 export default function PaymentGateway() {
   const [searchParams] = useSearchParams();
@@ -8,6 +9,13 @@ export default function PaymentGateway() {
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(1); // 1: Login, 2: OTP, 3: Confirm, 4: Success
   const [mobile, setMobile] = useState('');
+  const isDarkMode = React.useMemo(() => {
+    if (typeof window !== 'undefined') {
+      return document.documentElement.classList.contains('dark') || 
+             window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+    return false;
+  }, []);
   
   const amount = searchParams.get('amount') || '500.00';
   const merchant = "MTC Training Center";
@@ -134,6 +142,7 @@ export default function PaymentGateway() {
            </p>
         </div>
       </div>
+      <ChatWidget darkMode={isDarkMode} />
     </div>
   );
 }

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 import { motion, AnimatePresence } from "framer-motion";
-import { Home, UserPlus, Calendar, Clock, Award, Plus, Edit, Trash2, Search, LogOut, X, Eye, Settings, Upload, Save, CreditCard, Image as ImageIcon, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Moon, Sun, Bell, User, Users, Lock, Camera, Menu, Download, BookOpen, Mail, Phone, TrendingUp, Maximize2, Hash, Megaphone, Loader2 } from 'lucide-react'; 
+import { Home, UserPlus, Calendar, Clock, Award, Plus, Edit, Trash2, Search, LogOut, X, Eye, Settings, Upload, Save, CreditCard, Image as ImageIcon, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Moon, Sun, Bell, User, Users, Lock, Camera, Menu, Download, BookOpen, Mail, Phone, TrendingUp, Maximize2, Hash, Megaphone, Loader2 } from 'lucide-react';
+import { Paperclip, MessageSquare, Send, MoreVertical } from 'lucide-react'; 
 import { useNavigate } from 'react-router-dom';
 import CustomDatePicker from '../components/CustomDatePicker';
 import CustomDropdown from '../components/CustomDropdown';
@@ -121,6 +122,18 @@ const AdminDashboard = () => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showSessionExpiredModal, setShowSessionExpiredModal] = useState(false);
+  const [conversations, setConversations] = useState([]);
+  const [conversationSearch, setConversationSearch] = useState('');
+  const [chatMessages, setChatMessages] = useState([]);
+  const [selectedChatStudent, setSelectedChatStudent] = useState(null);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatAttachment, setChatAttachment] = useState(null);
+  const chatFileRef = React.useRef(null);
+  const [messageUnreadCount, setMessageUnreadCount] = useState(0);
+  const [conversationMenuOpen, setConversationMenuOpen] = useState(null);
+  const [showStudentProfileModal, setShowStudentProfileModal] = useState(false);
+  const [studentProfileData, setStudentProfileData] = useState(null);
 
   // Dark Mode Effect
   useEffect(() => {
@@ -172,11 +185,61 @@ const AdminDashboard = () => {
     const interval = setInterval(loadNotifications, 10000); // Poll every 10s
     return () => clearInterval(interval);
   }, [loadNotifications, loadAdminProfile]);
+  const loadMessageUnreadCount = React.useCallback(async () => {
+    try {
+      const res = await authedFetch('/api/messages/unread-count');
+      if (res.ok) {
+        const data = await res.json();
+        setMessageUnreadCount(data.count || 0);
+      }
+    } catch {}
+  }, []);
+  useEffect(() => {
+    loadMessageUnreadCount();
+    const id = setInterval(loadMessageUnreadCount, 10000);
+    return () => clearInterval(id);
+  }, [loadMessageUnreadCount]);
   useEffect(() => {
     const handler = () => setShowSessionExpiredModal(true);
     window.addEventListener('adminSessionExpired', handler);
     return () => window.removeEventListener('adminSessionExpired', handler);
   }, []);
+
+  const loadConversations = React.useCallback(async () => {
+    try {
+      const res = await authedFetch('/api/messages/conversations');
+      if (res.ok) {
+        const data = await res.json();
+        setConversations(data);
+      }
+    } catch {}
+  }, []);
+
+  const loadChatForStudent = React.useCallback(async (studentId) => {
+    try {
+      const res = await authedFetch(`/api/messages/student/${studentId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setChatMessages(data);
+        // Mark as read
+        authedFetch(`/api/messages/read/${studentId}`, { method: 'PUT' })
+          .then(() => {
+            setConversations(prev => prev.map(c => 
+              c.studentId === studentId ? { ...c, unreadCount: 0 } : c
+            ));
+          });
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (activeSection === 'messages') {
+      loadConversations();
+      if (selectedChatStudent?.studentId) {
+        loadChatForStudent(selectedChatStudent.studentId);
+      }
+    }
+  }, [activeSection, selectedChatStudent, loadConversations, loadChatForStudent]);
 
   const loadData = React.useCallback(async (isBackground = false) => {
     if (!isBackground) setLoading(true);
@@ -979,6 +1042,394 @@ const AdminDashboard = () => {
           </div>
         )}
       </div>
+    </div>
+  );
+
+  const handleChatFileSelect = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setChatAttachment(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const renderMessages = () => (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className={`text-2xl font-bold tracking-tight ${darkMode ? 'text-white' : 'text-gray-800'}`}>Messages</h2>
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-200px)] min-h-[500px]">
+        {/* Conversations List */}
+        <div className={`rounded-2xl shadow-sm border overflow-hidden flex flex-col ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
+          <div className={`p-4 border-b flex items-center gap-3 ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+            <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Students</p>
+            <div className="ml-auto relative">
+              <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${darkMode ? 'text-gray-400' : 'text-gray-400'}`} />
+              <input
+                value={conversationSearch}
+                onChange={(e) => setConversationSearch(e.target.value)}
+                placeholder="Search..."
+                className={`pl-9 pr-3 py-2 text-sm rounded-lg border outline-none ${darkMode ? 'bg-gray-900 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-900'}`}
+              />
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700">
+            {conversations
+              .filter(c => {
+                const q = conversationSearch.trim().toLowerCase();
+                if (!q) return true;
+                return (c.name || '').toLowerCase().includes(q) || (c.email || '').toLowerCase().includes(q);
+              })
+              .map((c) => (
+              <button
+                key={c.studentId}
+                onClick={() => { setSelectedChatStudent(c); loadChatForStudent(c.studentId); }}
+                className={`w-full text-left p-4 transition-colors relative ${
+                  selectedChatStudent?.studentId === c.studentId
+                    ? (darkMode ? 'bg-gray-700/40' : 'bg-blue-50')
+                    : (darkMode ? 'hover:bg-gray-700/30' : 'hover:bg-gray-50')
+                }`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="relative shrink-0">
+                      {c.profilePicture ? (
+                        <img src={c.profilePicture} alt="" className="w-10 h-10 rounded-full object-cover" />
+                      ) : (
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                          <User className="w-5 h-5" />
+                        </div>
+                      )}
+                      {c.unreadCount > 0 && (
+                        <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-white dark:border-gray-800 flex items-center justify-center text-[10px] text-white font-bold">
+                          {c.unreadCount}
+                        </span>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className={`text-sm font-medium truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>{c.name || c.email}</p>
+                      {c.lastMessage && (
+                        <p className={`text-xs mt-0.5 truncate ${c.unreadCount > 0 ? (darkMode ? 'text-gray-200 font-medium' : 'text-gray-900 font-medium') : (darkMode ? 'text-gray-400' : 'text-gray-500')}`}>
+                          {c.lastMessage.senderRole === 'admin' ? 'You: ' : ''}{c.lastMessage.attachment ? 'Sent an image' : c.lastMessage.text}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
+                      {c.lastMessage ? new Date(c.lastMessage.createdAt).toLocaleDateString() : 'New'}
+                    </span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setConversationMenuOpen(conversationMenuOpen === c.studentId ? null : c.studentId); }}
+                      className={`p-2 rounded-full ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-500 hover:bg-gray-100'}`}
+                    >
+                      <MoreVertical className="w-4 h-4" />
+                    </button>
+                  </div>
+                  {conversationMenuOpen === c.studentId && (
+                    <div className={`absolute right-4 top-14 z-10 w-44 rounded-lg border shadow-lg ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setStudentProfileData(c); setShowStudentProfileModal(true); setConversationMenuOpen(null); }}
+                        className={`w-full text-left px-3 py-2 text-sm ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-50'}`}
+                      >
+                        View Profile
+                      </button>
+                      <div className={`border-t ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}></div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setConversationMenuOpen(null); setConfirmModal({ isOpen: true, title: 'Delete Messages', message: 'Delete all messages for this student?', type: 'danger', onConfirm: async () => { try { const res = await authedFetch(`/api/messages/student/${c.studentId}`, { method: 'DELETE' }); if (res.ok) { if (selectedChatStudent?.studentId === c.studentId) setChatMessages([]); setConversations(prev => prev.map(x => x.studentId === c.studentId ? { ...x, lastMessage: null, unreadCount: 0 } : x)); toast.success('Messages deleted'); } else { toast.error('Failed to delete'); } } finally { setConfirmModal(prev => ({ ...prev, isOpen: false })); } } }); }}
+                        className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                      >
+                        Delete Messages
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </button>
+            ))}
+            {conversations.length === 0 && (
+              <div className={`p-6 text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No conversations</div>
+            )}
+          </div>
+        </div>
+
+        {/* Chat Area */}
+        <div className={`lg:col-span-2 rounded-2xl shadow-sm border overflow-hidden flex flex-col ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
+          <div className={`p-4 border-b flex items-center justify-between ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+            <div className="flex items-center gap-3">
+              {selectedChatStudent && (
+                 <>
+                   {selectedChatStudent.profilePicture ? (
+                     <img src={selectedChatStudent.profilePicture} alt="" className="w-10 h-10 rounded-full object-cover" />
+                   ) : (
+                     <div className={`w-10 h-10 rounded-full flex items-center justify-center ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                       <User className="w-5 h-5" />
+                     </div>
+                   )}
+                   <div>
+                     <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedChatStudent.name || selectedChatStudent.email}</p>
+                     <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{selectedChatStudent.email}</p>
+                   </div>
+                 </>
+              )}
+              {!selectedChatStudent && <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Select a student</p>}
+            </div>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {selectedChatStudent ? (
+              chatMessages.map((m) => (
+                <div key={m._id || m.createdAt + m.text} className={`flex items-start gap-2 ${m.senderRole === 'admin' ? 'justify-end' : 'justify-start'}`}>
+                  {m.senderRole !== 'admin' && (
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 overflow-hidden ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                      {selectedChatStudent.profilePicture ? (
+                        <img src={selectedChatStudent.profilePicture} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <User className="w-5 h-5" />
+                      )}
+                    </div>
+                  )}
+                  <div className={`max-w-[75%] space-y-1`}>
+                    <div className={`px-4 py-2.5 rounded-2xl text-sm ${
+                      m.senderRole === 'admin'
+                        ? 'bg-blue-600 text-white rounded-br-none'
+                        : darkMode ? 'bg-gray-700 text-gray-100 rounded-bl-none' : 'bg-gray-100 text-gray-800 rounded-bl-none'
+                    }`}>
+                      {m.attachment && (
+                        m.attachment.startsWith('data:image')
+                          ? <img src={m.attachment} alt="" onClick={() => setZoomedImage(m.attachment)} className="cursor-zoom-in max-w-full max-h-56 w-auto h-auto object-contain rounded-lg mb-2" />
+                          : <a href={m.attachment} target="_blank" rel="noopener noreferrer" className={`inline-flex items-center gap-2 text-xs px-3 py-2 rounded-lg ${darkMode ? 'bg-gray-800 text-gray-100' : 'bg-gray-200 text-gray-800'}`}>
+                              <Paperclip className="w-4 h-4" />
+                              <span>Open PDF</span>
+                            </a>
+                      )}
+                      {m.text}
+                    </div>
+                    <p className={`text-[10px] px-1 ${m.senderRole === 'admin' ? 'text-right' : ''} ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                      {new Date(m.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                      {m.senderRole === 'admin' && (
+                        <span className="ml-1">{m.isRead ? '• Read' : '• Sent'}</span>
+                      )}
+                    </p>
+                  </div>
+                  {m.senderRole === 'admin' && (
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 overflow-hidden ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                       {userProfile.image ? <img src={userProfile.image} alt="" className="w-full h-full object-cover" /> : <User className="w-5 h-5" />}
+                    </div>
+                  )}
+                </div>
+              ))
+            ) : (
+              <div className={`h-full flex flex-col items-center justify-center gap-3 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                <MessageSquare className="w-12 h-12 opacity-20" />
+                <p>Choose a student to view messages</p>
+              </div>
+            )}
+          </div>
+
+          {/* Attachment Preview */}
+          {chatAttachment && (
+            <div className={`px-4 py-2 flex items-center justify-between border-t ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+               <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Image attached</span>
+               <button onClick={() => setChatAttachment(null)} className="text-red-500 hover:text-red-600">
+                 <X className="w-4 h-4" />
+               </button>
+            </div>
+          )}
+
+          <div className={`p-4 border-t flex items-center gap-2 ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+            <button 
+               onClick={() => chatFileRef.current?.click()}
+               className={`p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}
+             >
+               <Paperclip className="w-5 h-5" />
+            </button>
+            <input 
+              type="file" 
+              ref={chatFileRef} 
+              className="hidden" 
+              accept="image/*,application/pdf"
+              onChange={handleChatFileSelect}
+            />
+            <input
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              placeholder="Type a message..."
+              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && document.getElementById('admin-send-btn')?.click()}
+              className={`flex-1 rounded-xl px-4 py-2.5 border outline-none focus:ring-2 focus:ring-blue-500/20 transition-all ${
+                darkMode ? 'bg-gray-900 border-gray-700 text-white placeholder-gray-500' : 'bg-white border-gray-200 text-gray-900 placeholder-gray-400'
+              }`}
+            />
+            <button
+              id="admin-send-btn"
+              disabled={(!chatInput.trim() && !chatAttachment) || chatLoading || !selectedChatStudent}
+              onClick={async () => {
+                if (!selectedChatStudent) return;
+                setChatLoading(true);
+                try {
+                  const res = await authedFetch('/api/messages/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                      text: chatInput, 
+                      studentId: selectedChatStudent.studentId,
+                      attachment: chatAttachment 
+                    })
+                  });
+                  if (res.ok) {
+                    const data = await res.json();
+                    const added = [];
+                    if (data.message) added.push(data.message);
+                    if (data.bot) added.push(data.bot);
+                    setChatMessages((prev) => [...prev, ...added]);
+                    setChatInput('');
+                    setChatAttachment(null);
+                    // Update conversation list last message preview
+                    setConversations(prev => prev.map(c => 
+                      c.studentId === selectedChatStudent.studentId ? { ...c, lastMessage: data.message } : c
+                    ));
+                  }
+                } finally {
+                  setChatLoading(false);
+                }
+              }}
+              className={`px-4 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all ${
+                (!chatInput.trim() && !chatAttachment) || chatLoading 
+                  ? 'opacity-50 cursor-not-allowed bg-gray-200 text-gray-500 dark:bg-gray-800 dark:text-gray-600' 
+                  : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 active:scale-95'
+              }`}
+            >
+              <Send className="w-4 h-4" />
+              <span className="hidden sm:inline">Send</span>
+            </button>
+          </div>
+        </div>
+      </div>
+      {showStudentProfileModal && studentProfileData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          {(() => {
+            const s = students.find(st => String(st._id) === String(studentProfileData.studentId)) || {};
+            const regs = registrations
+              .filter(r => String(r.studentId?._id || r.studentId) === String(studentProfileData.studentId))
+              .sort((a,b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
+            const apps = assessmentApps
+              .filter(a => String(a.studentId?._id || a.studentId) === String(studentProfileData.studentId))
+              .sort((a,b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
+            const age = s.age ? `${s.age} yrs` : '';
+            const getStatusBadge = (val) => {
+              const v = String(val || '').toLowerCase();
+              if (v === 'active' || v === 'approved') return 'bg-green-100 text-green-700';
+              if (v === 'pending') return 'bg-yellow-100 text-yellow-700';
+              if (v === 'completed') return 'bg-blue-100 text-blue-700';
+              if (v === 'dropped' || v === 'drop') return 'bg-orange-100 text-orange-700';
+              if (v === 'rejected' || v === 'cancelled') return 'bg-red-100 text-red-700';
+              return darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600';
+            };
+            return (
+              <div className={`w-full max-w-3xl rounded-2xl overflow-hidden border shadow-xl ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
+                <div className="p-4 flex items-center justify-between">
+                  <p className={`text-base font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Student Profile</p>
+                  <button onClick={() => setShowStudentProfileModal(false)} className={`${darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-500 hover:text-gray-900'}`}>
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="px-6 pb-6 space-y-6">
+                  <div className={`rounded-xl p-4 border ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                    <div className="flex items-center gap-4">
+                      {s.profilePicture ? (
+                        <img src={s.profilePicture} alt="" className="w-14 h-14 rounded-full object-cover" />
+                      ) : (
+                        <div className={`w-14 h-14 rounded-full flex items-center justify-center ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                          <User className="w-6 h-6" />
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className={`text-lg font-semibold truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>{s.firstName ? `${s.firstName} ${s.lastName}` : (studentProfileData.name || '')}</p>
+                        <p className={`text-sm truncate ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{s.email || studentProfileData.email}</p>
+                      </div>
+                    </div>
+                    <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                      <div className={`${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Mobile: <span className={darkMode ? 'text-gray-200' : 'text-gray-900'}>{s.mobileNo || '-'}</span></div>
+                      <div className={`${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Address: <span className={darkMode ? 'text-gray-200' : 'text-gray-900'}>{s.completeAddress || '-'}</span></div>
+                      <div className={`${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>DOB: <span className={darkMode ? 'text-gray-200' : 'text-gray-900'}>{s.dateOfBirth ? new Date(s.dateOfBirth).toLocaleDateString() : '-'} {age && `(${age})`}</span></div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className={`rounded-xl p-4 border ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                      <p className={`text-sm font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>General Information</p>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Sex</div><div className={darkMode ? 'text-gray-200' : 'text-gray-800'}>{s.sex || '-'}</div>
+                        <div className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Civil Status</div><div className={darkMode ? 'text-gray-200' : 'text-gray-800'}>{s.civilStatus || '-'}</div>
+                        <div className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Nationality</div><div className={darkMode ? 'text-gray-200' : 'text-gray-800'}>{s.nationality || '-'}</div>
+                        <div className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Registered</div><div className={darkMode ? 'text-gray-200' : 'text-gray-800'}>{s.createdAt ? new Date(s.createdAt).toLocaleDateString() : '-'}</div>
+                      </div>
+                    </div>
+                    <div className={`rounded-xl p-4 border ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                      <p className={`text-sm font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Education</p>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>College</div><div className={darkMode ? 'text-gray-200' : 'text-gray-800'}>{s.educationCollege || '-'}</div>
+                        <div className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Course</div><div className={darkMode ? 'text-gray-200' : 'text-gray-800'}>{s.educationCourse || '-'}</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className={`rounded-xl p-4 border ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                    <p className={`text-sm font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Employment</p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                      <div className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Company</div><div className={darkMode ? 'text-gray-200' : 'text-gray-800'}>{s.employmentCompany || '-'}</div>
+                      <div className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Position</div><div className={darkMode ? 'text-gray-200' : 'text-gray-800'}>{s.employmentPosition || '-'}</div>
+                      <div className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Status</div><div className={darkMode ? 'text-gray-200' : 'text-gray-800'}>{s.employmentStatus || '-'}</div>
+                      <div className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Experience</div><div className={darkMode ? 'text-gray-200' : 'text-gray-800'}>{s.yearsOfExperience ? `${s.yearsOfExperience} Year/s` : '-'}</div>
+                    </div>
+                  </div>
+                  <div className={`rounded-xl p-4 border ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                    <p className={`text-sm font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Training History</p>
+                    {regs.length > 0 ? (
+                      <div className="space-y-2">
+                        {regs.map(r => {
+                          const sched = schedules.find(sc => String(sc._id) === String(r.scheduleId));
+                          const title = sched?.courseTitle || 'Training';
+                          const date = sched?.trainingDate ? new Date(sched.trainingDate).toLocaleDateString() : '';
+                          const status = String(r.status || '').toUpperCase();
+                          return (
+                            <div key={r._id} className={`flex items-center justify-between rounded-lg px-3 py-2 ${darkMode ? 'bg-gray-700/40' : 'bg-gray-50'}`}>
+                              <div className={`${darkMode ? 'text-gray-200' : 'text-gray-800'} text-sm`}>{title}{date ? ` • ${date}` : ''}</div>
+                              <span className={`text-xs px-2 py-0.5 rounded ${getStatusBadge(status)}`}>{status}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'} text-sm`}>No training records</p>
+                    )}
+                  </div>
+                  <div className={`rounded-xl p-4 border ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                    <p className={`text-sm font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Assessment Applications</p>
+                    {apps.length > 0 ? (
+                      <div className="space-y-2">
+                        {apps.map(a => {
+                          const title = a.assessmentTitle || 'Assessment';
+                          const date = a.createdAt ? new Date(a.createdAt).toLocaleDateString() : '';
+                          const status = String(a.status || '').toUpperCase();
+                          return (
+                            <div key={a._id} className={`flex items-center justify-between rounded-lg px-3 py-2 ${darkMode ? 'bg-gray-700/40' : 'bg-gray-50'}`}>
+                              <div className={`${darkMode ? 'text-gray-200' : 'text-gray-800'} text-sm`}>{title}{date ? ` • ${date}` : ''}</div>
+                              <span className={`text-xs px-2 py-0.5 rounded ${getStatusBadge(status)}`}>{status}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'} text-sm`}>No assessment applications</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
     </div>
   );
 
@@ -3936,6 +4387,7 @@ const AdminDashboard = () => {
             },
             { id: 'announcements', icon: Megaphone, label: 'Announcements' },
             { id: 'sales-reports', icon: TrendingUp, label: 'Sales Reports' },
+            { id: 'messages', icon: Mail, label: 'Messages' },
             { id: 'settings', icon: Settings, label: 'Settings' }
           ].map((item) => (
             <div key={item.id}>
@@ -3961,7 +4413,12 @@ const AdminDashboard = () => {
               >
                 <div className="flex items-center gap-3">
                   <item.icon className="w-5 h-5" />
-                  {item.label}
+                  <span className="relative inline-flex items-center">
+                    {item.label}
+                    {item.id === 'messages' && messageUnreadCount > 0 && (
+                      <span className="ml-2 inline-block w-2 h-2 rounded-full bg-red-500"></span>
+                    )}
+                  </span>
                 </div>
                 {item.subItems && (
                    <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${activeSection === item.id ? 'rotate-180' : ''}`} />
@@ -4169,6 +4626,7 @@ const AdminDashboard = () => {
             {activeSection === 'assessments' && renderAssessments()}
             {activeSection === 'sales-reports' && renderSalesReports()}
             {activeSection === 'announcements' && renderAnnouncements()}
+            {activeSection === 'messages' && renderMessages()}
             {activeSection === 'settings' && renderSettings()}
             {activeSection === 'notifications' && renderNotifications()}
           </div>
@@ -5448,13 +5906,7 @@ const AdminDashboard = () => {
               <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Session Expired</h3>
             </div>
             <p className={`${darkMode ? 'text-gray-300' : 'text-gray-700'} mb-6`}>Your admin session has expired.</p>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setShowSessionExpiredModal(false)}
-                className={`px-5 py-2.5 rounded-xl ${darkMode ? 'bg-gray-700 text-white hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'} transition`}
-              >
-                OK
-              </button>
+            <div className="flex justify-end">
               <button
                 onClick={() => {
                   localStorage.removeItem('adminToken');

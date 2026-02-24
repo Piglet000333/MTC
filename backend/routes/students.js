@@ -27,7 +27,7 @@ const signStudentToken = (studentId) => {
   return jwt.sign(
     { sub: studentId, role: 'student' },
     process.env.JWT_SECRET || 'secret',
-    { expiresIn: '15m' }
+    { expiresIn: '30m' }
   );
 };
 
