@@ -15,6 +15,8 @@ export default function ChatWidget({ darkMode }) {
   const [errorMsg, setErrorMsg] = useState('')
   const [showTimeId, setShowTimeId] = useState(null)
   const [zoomImage, setZoomImage] = useState(null)
+  const [isAdminOnline, setIsAdminOnline] = useState(false)
+  const [adminProfile, setAdminProfile] = useState({ name: 'Admin', image: '' })
 
   const authHeaders = React.useCallback(() => {
     const token = localStorage.getItem('studentToken')
@@ -32,6 +34,13 @@ export default function ChatWidget({ darkMode }) {
         }
         const data = res.ok ? await res.json() : []
         setMessages(data)
+        try {
+          const last = data?.[data.length - 1]
+          const lastTs = new Date(last?.createdAt || 0).getTime()
+          if (Number.isFinite(lastTs) && lastTs > 0) {
+            localStorage.setItem('studentChatLast', String(lastTs))
+          }
+        } catch {}
         setErrorMsg('')
       } catch (e) {
         setErrorMsg(e.message || 'Unable to load messages')
@@ -74,6 +83,70 @@ export default function ChatWidget({ darkMode }) {
     window.addEventListener('openStudentChat', openListener)
     return () => window.removeEventListener('openStudentChat', openListener)
   }, [])
+
+  // Admin presence via localStorage heartbeat set by AdminDashboard
+  useEffect(() => {
+    let cancelled = false
+    const loadAdminProfile = async () => {
+      try {
+        const res = await fetch('/api/admin/profile/public')
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}))
+          if (!cancelled) setAdminProfile({ name: data?.username || data?.name || 'Admin', image: data?.image || '' })
+        }
+      } catch {}
+    }
+    const fetchPresenceFromServer = async () => {
+      try {
+        const res = await fetch('/api/admin/online', { method: 'GET', credentials: 'include', headers: authHeaders() })
+        const ct = res.headers.get('content-type') || ''
+        if (!res.ok) return null
+        if (ct.includes('application/json')) {
+          const d = await res.json().catch(() => ({}))
+          if (d === true) return true
+          if (typeof d === 'string') {
+            const s = d.toLowerCase()
+            if (s.includes('online') || s === 'true' || s === '1') return true
+            if (s.includes('offline') || s === 'false' || s === '0') return false
+            return null
+          }
+          const s = String(d?.status ?? '').toLowerCase()
+          if (['online','available','active','on'].includes(s)) return true
+          if (['offline','inactive','off'].includes(s)) return false
+          if (d?.online === true || d?.isOnline === true || d?.available === true) return true
+          if (String(d?.online).toLowerCase() === 'true') return true
+          if (Number(d?.online) === 1 || Number(d?.status) === 1) return true
+          if (d?.online === false || d?.isOnline === false) return false
+          return null
+        } else {
+          const text = await res.text().catch(() => '')
+          const t = String(text || '').trim().toLowerCase()
+          if (t.includes('online') || t === 'true' || t === '1') return true
+          if (t.includes('offline') || t === 'false' || t === '0') return false
+          return null
+        }
+      } catch { return null }
+    }
+    const updatePresence = async () => {
+      try {
+        const ts = Number(localStorage.getItem('adminHeartbeat') || 0)
+        let online = Number.isFinite(ts) && ts > 0 && (Date.now() - ts) < 15000
+        if (!online) {
+          const serverVal = await fetchPresenceFromServer()
+          if (serverVal !== null) online = !!serverVal
+        }
+        if (!cancelled) setIsAdminOnline(online)
+      } catch {
+        if (!cancelled) setIsAdminOnline(false)
+      }
+    }
+    loadAdminProfile()
+    updatePresence().catch(() => {})
+    const onStorage = (e) => { if (e.key === 'adminHeartbeat') updatePresence().catch(() => {}) }
+    window.addEventListener('storage', onStorage)
+    const id = setInterval(() => { updatePresence().catch(() => {}) }, 7000)
+    return () => { cancelled = true; window.removeEventListener('storage', onStorage); clearInterval(id) }
+  }, [authHeaders])
 
   useEffect(() => {
     // Mark as read when opened
@@ -127,6 +200,7 @@ export default function ChatWidget({ darkMode }) {
       if (data.message) added.push(data.message)
       if (data.bot) added.push(data.bot)
       setMessages(prev => [...prev, ...added])
+      try { localStorage.setItem('studentChatLast', String(Date.now())) } catch {}
       setInput('')
       setAttachment(null)
       setErrorMsg('')
@@ -137,78 +211,99 @@ export default function ChatWidget({ darkMode }) {
     }
   }
 
-  const showSuggestions = messages.length === 0
+  const lastMessageTs = useMemo(() => {
+    if (!messages || messages.length === 0) return 0
+    const last = messages[messages.length - 1]
+    const t = new Date(last?.createdAt || 0).getTime()
+    if (Number.isFinite(t) && t > 0) return t
+    const cached = Number(localStorage.getItem('studentChatLast') || 0)
+    return Number.isFinite(cached) ? cached : 0
+  }, [messages])
+
+  const showSuggestions = useMemo(() => {
+    if (!messages || messages.length === 0) return true
+    const now = Date.now()
+    // Resurface suggestions if no interaction for 24h
+    return now - lastMessageTs > 24 * 60 * 60 * 1000
+  }, [messages, lastMessageTs])
 
   return createPortal(
     <>
       <button
         onClick={() => setOpen(o => !o)}
-        className={`fixed bottom-5 right-5 left-auto px-4 py-3 rounded-full flex items-center gap-2 transition ${
-          darkMode 
-            ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-2xl shadow-blue-900/30 hover:shadow-blue-900/40' 
-            : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-2xl shadow-blue-200 hover:shadow-blue-300'
-        } hover:-translate-y-0.5`}
-        style={{ zIndex: 2147483647 }}
-        aria-label="Chat"
+        className={`fixed bottom-24 right-3 sm:bottom-5 sm:right-5 z-[2147483647] w-14 h-14 rounded-2xl flex items-center justify-center transition-transform duration-200 hover:scale-105 active:scale-95
+          ${open
+            ? (darkMode 
+                ? 'bg-gradient-to-br from-indigo-700 to-blue-700 shadow-blue-900/40' 
+                : 'bg-gradient-to-br from-indigo-600 to-blue-600 shadow-blue-400/40')
+            : (darkMode 
+                ? 'bg-gradient-to-br from-blue-700 to-indigo-700 shadow-blue-900/30' 
+                : 'bg-gradient-to-br from-blue-600 to-indigo-600 shadow-blue-400/30')}`}
+        aria-label={open ? 'Close chat' : 'Open chat'}
+        type="button"
       >
-        <MessageSquare className="w-5 h-5" />
-        <span className="font-semibold">Chat</span>
-        {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-red-500 border-2 border-white">
-            <span className="absolute inset-0 rounded-full bg-red-500 animate-ping opacity-70"></span>
+        {open ? (
+          <X className="w-6 h-6 text-white" />
+        ) : (
+          <MessageSquare className="w-6 h-6 text-white" />
+        )}
+        {!open && unreadCount > 0 && (
+          <span className={`absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center ${darkMode ? 'border-2 border-[#0f172a]' : 'border-2 border-white'}`}>
+            {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
       </button>
       {open && (
         <div
-          className={`w-80 sm:w-96 rounded-3xl border shadow-2xl overflow-hidden flex flex-col z-[9999] ${
-            darkMode ? 'bg-[#0f172a] border-gray-700 shadow-blue-900/30' : 'bg-white border-gray-200 shadow-blue-200'
-          }`}
-          style={{ position: 'fixed', bottom: 80, right: 20, left: 'auto', maxHeight: '80vh', zIndex: 2147483647 }}
+          className={`fixed bottom-40 right-3 sm:bottom-20 sm:right-5 max-w-[calc(100vw-1.5rem)] w-[360px] max-h-[70vh] rounded-3xl overflow-hidden flex flex-col z-[2147483647]
+            ${darkMode ? 'bg-[#0f172a]' : 'bg-white'}
+            ${darkMode ? 'shadow-[0_32px_80px_rgba(2,6,23,0.8)]' : 'shadow-[0_32px_80px_rgba(0,0,0,0.25)]'} border ${darkMode ? 'border-gray-800' : 'border-gray-100'}`}
         >
-          <div className={`flex items-center justify-between px-4 py-3 border-b ${
-            darkMode ? 'border-gray-800 bg-gradient-to-r from-blue-900 to-indigo-900' : 'border-gray-100 bg-gradient-to-r from-blue-600 to-indigo-600'
+          <div className={`px-4 py-3 border-b relative bg-gradient-to-r ${
+            darkMode ? 'from-blue-900 to-indigo-900 border-gray-800' : 'from-blue-600 to-indigo-600 border-blue-700/20'
           }`}>
-            <div className="flex items-center gap-2">
-              <MessageSquare className={`w-5 h-5 ${darkMode ? 'text-blue-200' : 'text-white'}`} />
-              <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-white'}`}>Chat Support</span>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl overflow-hidden border border-white/10 bg-white/10">
+                  {adminProfile.image 
+                    ? <img src={adminProfile.image} alt="Admin" className="w-full h-full object-cover" />
+                    : <div className="w-full h-full flex items-center justify-center text-white font-extrabold">{(adminProfile.name || 'A')[0]}</div>
+                  }
+                </div>
+                <div>
+                  <div className={`font-bold ${darkMode ? 'text-white' : 'text-white'}`}>Chat Support</div>
+                  <div className={`text-xs flex items-center gap-1 ${isAdminOnline ? 'text-emerald-200' : 'text-red-200'}`}>
+                    <span className="relative inline-flex w-2 h-2">
+                      <span className={`absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping ${isAdminOnline ? 'bg-emerald-300' : 'bg-red-300'}`}></span>
+                      <span className={`relative inline-flex rounded-full h-2 w-2 ${isAdminOnline ? 'bg-emerald-400' : 'bg-red-400'}`}></span>
+                    </span>
+                    {isAdminOnline ? 'Online now' : 'Offline'}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setOpen(false)}
+                className={`p-2 rounded-xl ${darkMode ? 'hover:bg-white/10 text-white' : 'hover:bg-white/20 text-white'}`}
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
-            <button
-              onClick={() => setOpen(false)}
-              className={`${darkMode ? 'text-gray-200 hover:text-white' : 'text-white/80 hover:text-white'}`}
-            >
-              <X className="w-5 h-5" />
-            </button>
+            <div className={`absolute left-4 right-4 bottom-0 h-px ${darkMode ? 'bg-blue-500/30' : 'bg-white/20'}`} />
           </div>
           {errorMsg && (
             <div className="px-4 py-2 text-xs bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-300 border-b border-red-200 dark:border-red-800">
               {errorMsg}
             </div>
           )}
-          {showSuggestions && (
-            <div className={`px-4 py-2 grid grid-cols-2 gap-2 border-b border-gray-100 dark:border-gray-800`}>
-              {suggestions.map(s => (
-                <button
-                  key={s}
-                  onClick={() => sendMessage(s, true)}
-                  className={`text-xs px-2 py-1 rounded-lg text-left truncate ${
-                    darkMode ? 'bg-gray-800 text-gray-200 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          )}
-          <div className={`px-4 flex-1 overflow-y-auto space-y-3 py-3 ${darkMode ? 'text-white' : 'text-gray-900'}`} style={{ minHeight: '300px' }}>
+          <div className={`px-4 flex-1 overflow-y-auto space-y-3 py-4 text-sm ${darkMode ? 'text-gray-100' : 'text-gray-900'}`} style={{ minHeight: '260px' }}>
             {messages.map(m => (
               <div key={m._id || m.createdAt + m.text} className={`flex items-start gap-2 ${m.senderRole === 'student' ? 'justify-end' : 'justify-start'}`}>
                 {m.senderRole !== 'student' && (
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 overflow-hidden ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
                     {m.senderRole === 'bot' ? <Bot className="w-5 h-5" /> : (
-                      // Try to show admin profile if available in message (requires backend population or stored info)
-                      // For now, use User icon
-                       <User className="w-5 h-5" />
+                      adminProfile.image 
+                        ? <img src={adminProfile.image} alt="Admin" className="w-full h-full object-cover" />
+                        : <User className="w-5 h-5" />
                     )}
                   </div>
                 )}
@@ -248,15 +343,31 @@ export default function ChatWidget({ darkMode }) {
           
           {/* Attachment Preview */}
           {attachment && (
-            <div className="px-4 py-2 flex items-center justify-between border-t border-gray-100 dark:border-gray-800">
-              <span className="text-xs text-gray-500">Image attached</span>
-              <button onClick={() => setAttachment(null)} className="text-red-500 hover:text-red-600">
+            <div className="px-4 py-2 flex items-center justify-between border-t border-gray-800/60 text-xs text-gray-400">
+              <span>Attachment ready</span>
+              <button onClick={() => setAttachment(null)} className="text-red-400 hover:text-red-300">
                 <X className="w-4 h-4" />
               </button>
             </div>
           )}
 
-          <div className="px-4 py-3 flex items-center gap-2 border-t border-gray-100 dark:border-gray-800">
+          {/* Pre-questions at the bottom */}
+          {showSuggestions && (
+            <div className={`px-4 pt-3 grid grid-cols-2 gap-2 ${darkMode ? 'text-blue-100' : 'text-blue-700'}`}>
+              {suggestions.map(s => (
+                <button
+                  key={s}
+                  onClick={() => sendMessage(s, true)}
+                  className={`text-xs px-3 py-2 rounded-xl text-left truncate transition ${
+                    darkMode ? 'bg-blue-950/40 hover:bg-blue-900/50 border border-blue-900/40' : 'bg-blue-50 hover:bg-blue-100 border border-blue-200'
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className={`px-4 py-3 flex items-center gap-2 border-t ${darkMode ? 'border-gray-800/60' : 'border-gray-100'}`}>
             <button 
               onClick={() => fileInputRef.current?.click()}
               className={`p-2 rounded-full transition ${darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-gray-100'}`}
@@ -283,7 +394,7 @@ export default function ChatWidget({ darkMode }) {
               disabled={!studentId || (!input.trim() && !attachment) || loading}
               onClick={() => sendMessage(input)}
               className={`px-3 py-2 rounded-full flex items-center gap-1 ${loading ? 'opacity-60' : ''} ${
-                darkMode ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white' : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white'
+                darkMode ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-blue-900/20' : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white'
               } hover:shadow-lg`}
             >
               <Send className="w-5 h-5" />

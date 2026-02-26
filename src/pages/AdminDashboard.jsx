@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import toast, { Toaster } from 'react-hot-toast';
 import { motion, AnimatePresence } from "framer-motion";
-import { Home, UserPlus, Calendar, Clock, Award, Plus, Edit, Trash2, Search, LogOut, X, Eye, Settings, Upload, Save, CreditCard, Image as ImageIcon, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Moon, Sun, Bell, User, Users, Lock, Camera, Menu, Download, BookOpen, Mail, Phone, TrendingUp, Maximize2, Hash, Megaphone, Loader2 } from 'lucide-react';
+import { Home, UserPlus, Calendar, Clock, Award, Plus, Edit, Trash2, Search, LogOut, X, Eye, Settings, Upload, Save, CreditCard, Image as ImageIcon, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Moon, Sun, Bell, User, Users, Lock, Camera, Download, BookOpen, Mail, Phone, TrendingUp, Maximize2, Hash, Megaphone, Loader2 } from 'lucide-react';
 import { Paperclip, MessageSquare, Send, MoreVertical } from 'lucide-react'; 
 import { useNavigate } from 'react-router-dom';
 import CustomDatePicker from '../components/CustomDatePicker';
@@ -68,6 +68,7 @@ const AdminDashboard = () => {
   const [salesTypeFilter, setSalesTypeFilter] = useState(''); // '' | 'training' | 'assessment'
   const [salesPage, setSalesPage] = useState(1);
   const SALES_ITEMS_PER_PAGE = 10;
+  const [pendingCourseFilter, setPendingCourseFilter] = useState('All');
 
 
   // Confirmation Modal State
@@ -136,6 +137,93 @@ const AdminDashboard = () => {
   const [studentProfileData, setStudentProfileData] = useState(null);
   const idleTimerRef = React.useRef(null);
   const lastActivityRef = React.useRef(Date.now());
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const prevMsgUnreadRef = React.useRef(0);
+  const [notifyEnabled, setNotifyEnabled] = useState(true);
+  const [notifyVolume, setNotifyVolume] = useState(0.25);
+  const [notifyTone, setNotifyTone] = useState('chime');
+  const [showNotifyMenu, setShowNotifyMenu] = useState(false);
+  const audioCtxRef = React.useRef(null);
+  const ensureAudioCtx = React.useCallback(() => {
+    if (!audioCtxRef.current) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      audioCtxRef.current = new AC();
+    }
+    if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+      audioCtxRef.current.resume();
+    }
+    return audioCtxRef.current;
+  }, []);
+  const playNotify = React.useCallback(() => {
+    try {
+      if (!notifyEnabled) return;
+      const ctx = ensureAudioCtx();
+      if (!ctx || ctx.state !== 'running') return;
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      const f = notifyTone === 'ding' ? 988 : notifyTone === 'low' ? 650 : 880;
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(f, ctx.currentTime);
+      g.gain.setValueAtTime(0, ctx.currentTime);
+      g.gain.linearRampToValueAtTime(Math.max(0.01, Math.min(0.6, notifyVolume)), ctx.currentTime + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+      o.connect(g);
+      g.connect(ctx.destination);
+      o.start();
+      o.stop(ctx.currentTime + 0.4);
+    } catch {}
+  }, [ensureAudioCtx, notifyEnabled, notifyVolume, notifyTone]);
+  React.useEffect(() => {
+    const resume = () => {
+      try { ensureAudioCtx(); } catch {}
+      window.removeEventListener('pointerdown', resume);
+      window.removeEventListener('keydown', resume);
+    };
+    window.addEventListener('pointerdown', resume);
+    window.addEventListener('keydown', resume);
+    return () => {
+      window.removeEventListener('pointerdown', resume);
+      window.removeEventListener('keydown', resume);
+    };
+  }, [ensureAudioCtx]);
+  useEffect(() => {
+    const writeHeartbeat = () => {
+      try { localStorage.setItem('adminHeartbeat', String(Date.now())); } catch {}
+    };
+    const postHeartbeat = async () => {
+      try { await authedFetch('/api/admin/heartbeat', { method: 'POST' }); } catch {}
+    };
+    const tick = () => { writeHeartbeat(); postHeartbeat(); };
+    tick();
+    const id = setInterval(tick, 8000);
+    const vis = () => { if (!document.hidden) tick(); };
+    document.addEventListener('visibilitychange', vis);
+    const onBeforeUnload = () => { try { localStorage.setItem('adminHeartbeat', ''); } catch {} };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', vis);
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      try { localStorage.setItem('adminHeartbeat', ''); } catch {}
+    };
+  }, []);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('adminNotify');
+      if (raw) {
+        const cfg = JSON.parse(raw);
+        if (typeof cfg.enabled === 'boolean') setNotifyEnabled(cfg.enabled);
+        if (typeof cfg.volume === 'number') setNotifyVolume(cfg.volume);
+        if (typeof cfg.tone === 'string') setNotifyTone(cfg.tone);
+      }
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem('adminNotify', JSON.stringify({ enabled: notifyEnabled, volume: notifyVolume, tone: notifyTone }));
+    } catch {}
+  }, [notifyEnabled, notifyVolume, notifyTone]);
 
   // Dark Mode Effect
   useEffect(() => {
@@ -201,6 +289,12 @@ const AdminDashboard = () => {
     const id = setInterval(loadMessageUnreadCount, 10000);
     return () => clearInterval(id);
   }, [loadMessageUnreadCount]);
+  useEffect(() => {
+    if (messageUnreadCount > prevMsgUnreadRef.current) {
+      playNotify();
+    }
+    prevMsgUnreadRef.current = messageUnreadCount;
+  }, [messageUnreadCount, playNotify]);
   useEffect(() => {
     const handler = () => setShowSessionExpiredModal(true);
     window.addEventListener('adminSessionExpired', handler);
@@ -1084,6 +1178,85 @@ const AdminDashboard = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className={`text-2xl font-bold tracking-tight ${darkMode ? 'text-white' : 'text-gray-800'}`}>Messages</h2>
+        <div className="relative">
+          <button
+            onClick={() => setShowNotifyMenu(v => !v)}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition ${
+              darkMode ? 'border-gray-700 text-gray-200 hover:bg-gray-700' : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+            }`}
+            title="Sound settings"
+          >
+            <Bell className="w-4 h-4" />
+            <span className="text-sm">{notifyEnabled ? 'Sound: On' : 'Sound: Off'}</span>
+          </button>
+          {showNotifyMenu && (
+            <div
+              className={`absolute right-0 mt-2 w-64 rounded-xl shadow-lg z-10 p-3 ${
+                darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-100'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Enable sound</span>
+                <button
+                  onClick={() => setNotifyEnabled(v => !v)}
+                  className={`w-10 h-6 rounded-full p-0.5 transition ${
+                    notifyEnabled
+                      ? 'bg-blue-600'
+                      : darkMode
+                        ? 'bg-gray-700'
+                        : 'bg-gray-300'
+                  }`}
+                >
+                  <div
+                    className={`w-5 h-5 rounded-full bg-white shadow transform transition ${
+                      notifyEnabled ? 'translate-x-4' : ''
+                    }`}
+                  />
+                </button>
+              </div>
+              <div className="mb-3">
+                <div className={`flex items-center justify-between text-xs mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  <span>Volume</span>
+                  <span>{Math.round(notifyVolume * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="0.6"
+                  step="0.05"
+                  value={notifyVolume}
+                  onChange={e => setNotifyVolume(parseFloat(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+              <div className={`mb-2 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Tone</div>
+              <div className="flex gap-2">
+                {[
+                  { id: 'chime', label: 'Default' },
+                  { id: 'ding', label: 'High' },
+                  { id: 'low', label: 'Low' }
+                ].map(t => (
+                  <button
+                    key={t.id}
+                    onClick={() => {
+                      setNotifyTone(t.id);
+                      playNotify();
+                    }}
+                    className={`flex-1 text-xs px-2 py-1.5 rounded-lg border ${
+                      notifyTone === t.id
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : darkMode
+                          ? 'border-gray-700 text-gray-300 hover:bg-gray-700'
+                          : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-200px)] min-h-[500px]">
         {/* Conversations List */}
@@ -3773,6 +3946,16 @@ const AdminDashboard = () => {
     // Filter for pending registrations
     let pendingRegs = registrations.filter(r => r.status === 'pending');
     
+    // Unique course titles for filter dropdown
+    const uniquePendingCourses = [...new Set(
+      pendingRegs
+        .map(r => {
+          const s = r.scheduleId || {};
+          return s.courseTitle || s.title || '';
+        })
+        .filter(Boolean)
+    )];
+    
     // Apply Search Filter
     if (scheduleSearchTerm) { // Use scheduleSearchTerm instead of undefined searchTerm
       const lowerSearch = scheduleSearchTerm.toLowerCase();
@@ -3783,6 +3966,15 @@ const AdminDashboard = () => {
         const courseTitle = (schedule.courseTitle || schedule.title || '').toLowerCase();
         
         return fullName.includes(lowerSearch) || courseTitle.includes(lowerSearch);
+      });
+    }
+
+    // Apply Course Filter
+    if (pendingCourseFilter !== 'All') {
+      pendingRegs = pendingRegs.filter(r => {
+        const schedule = r.scheduleId || {};
+        const courseTitle = schedule.courseTitle || schedule.title || '';
+        return courseTitle === pendingCourseFilter;
       });
     }
 
@@ -3798,20 +3990,32 @@ const AdminDashboard = () => {
                <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Review and approve student enrollment applications</p>
              </div>
              
-             {/* Search Bar */}
-             <div className="relative group w-full sm:w-auto">
-                <Search className={`absolute left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 transition-colors ${darkMode ? 'text-gray-500 group-focus-within:text-blue-500' : 'text-gray-400 group-focus-within:text-blue-500'}`} />
-                <input
-                  type="text"
-                  placeholder="Search applicant or course..."
-                  value={scheduleSearchTerm} // Use scheduleSearchTerm
-                  onChange={(e) => setScheduleSearchTerm(e.target.value)} // Use setScheduleSearchTerm
-                  className={`pl-11 pr-4 py-3 rounded-xl border-none ring-1 ring-inset focus:ring-2 transition-all w-full sm:w-80 text-sm font-medium ${
-                    darkMode 
-                      ? 'bg-gray-900/50 ring-gray-700 text-white placeholder-gray-500 focus:ring-blue-500/50 focus:bg-gray-900' 
-                      : 'bg-white ring-gray-200 text-gray-900 placeholder-gray-400 focus:ring-blue-500/20 focus:bg-white focus:shadow-sm'
-                  }`}
-                />
+             {/* Search + Course Filter */}
+             <div className="flex items-center gap-3 w-full sm:w-auto">
+               <div className="relative group flex-1 sm:flex-none">
+                  <Search className={`absolute left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 transition-colors ${darkMode ? 'text-gray-500 group-focus-within:text-blue-500' : 'text-gray-400 group-focus-within:text-blue-500'}`} />
+                  <input
+                    type="text"
+                    placeholder="Search applicant or course..."
+                    value={scheduleSearchTerm}
+                    onChange={(e) => setScheduleSearchTerm(e.target.value)}
+                    className={`pl-11 pr-4 py-3 rounded-xl border-none ring-1 ring-inset focus:ring-2 transition-all w-full sm:w-80 text-sm font-medium ${
+                      darkMode 
+                        ? 'bg-gray-900/50 ring-gray-700 text-white placeholder-gray-500 focus:ring-blue-500/50 focus:bg-gray-900' 
+                        : 'bg-white ring-gray-200 text-gray-900 placeholder-gray-400 focus:ring-blue-500/20 focus:bg-white focus:shadow-sm'
+                    }`}
+                  />
+               </div>
+               <CustomDropdown
+                 options={[
+                   { value: 'All', label: 'All Courses' },
+                   ...uniquePendingCourses.map(title => ({ value: title, label: title }))
+                 ]}
+                 value={pendingCourseFilter}
+                 onChange={setPendingCourseFilter}
+                 placeholder="All Courses"
+                 darkMode={darkMode}
+               />
              </div>
            </div>
         </div>
@@ -4492,12 +4696,77 @@ const AdminDashboard = () => {
 
       {/* Main Content Area */}
       <div className="relative flex flex-1 flex-col md:ml-64 overflow-y-auto overflow-x-hidden">
+        {/* Mobile Navigation Overlay */}
+        <AnimatePresence>
+          {mobileNavOpen && (
+            <>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 0.6 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-50 bg-black"
+                onClick={() => setMobileNavOpen(false)}
+              />
+              <motion.div
+                initial={{ x: '-100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '-100%' }}
+                transition={{ type: 'spring', bounce: 0.08, duration: 0.35 }}
+                className={`fixed top-0 left-0 bottom-0 w-72 z-[60] border-r p-4 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200 shadow-lg'}`}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <span className={`text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Menu</span>
+                  <button
+                    onClick={() => setMobileNavOpen(false)}
+                    className={`p-2 rounded-full ${darkMode ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-100 text-gray-600'}`}
+                    aria-label="Close menu"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 gap-2">
+                  {[
+                    { id: 'dashboard', icon: Home, label: 'Dashboard' },
+                    { id: 'schedules', icon: Calendar, label: 'Schedules' },
+                    { id: 'assessments', icon: Award, label: 'Assessments' },
+                    { id: 'announcements', icon: Megaphone, label: 'Announcements' },
+                    { id: 'sales-reports', icon: TrendingUp, label: 'Sales Reports' },
+                    { id: 'messages', icon: Mail, label: 'Messages' },
+                    { id: 'settings', icon: Settings, label: 'Settings' },
+                  ].map(item => (
+                    <button
+                      key={item.id}
+                      onClick={() => { setActiveSection(item.id); setActiveSubSection(''); setMobileNavOpen(false); }}
+                      className={`w-full flex items-center justify-between px-4 py-3 rounded-xl font-medium transition ${activeSection === item.id
+                        ? (darkMode ? 'bg-blue-600 text-white' : 'bg-blue-600 text-white')
+                        : (darkMode ? 'bg-gray-700 text-gray-200 hover:bg-gray-600' : 'bg-gray-50 text-gray-800 hover:bg-gray-100')}`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <item.icon className="w-5 h-5" />
+                        {item.label}
+                      </span>
+                      {activeSection === item.id && <CheckCircle2 className="w-4 h-4" />}
+                    </button>
+                  ))}
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
         {/* Header */}
         <header className={`sticky top-0 z-50 flex w-full drop-shadow-sm ${darkMode ? 'bg-gray-800 text-white shadow-md' : 'bg-white shadow-sm'} transition-colors duration-300`}>
           <div className="flex flex-grow items-center justify-between px-4 py-4 shadow-2 md:px-6 2xl:px-11">
             <div className="flex items-center gap-2 sm:gap-4 lg:hidden">
-              <button className={`block rounded-sm border p-1.5 shadow-sm lg:hidden ${darkMode ? 'border-gray-700 bg-gray-800 text-white' : 'border-stroke bg-white text-black'}`}>
-                <Menu className="w-6 h-6" />
+              <button 
+                onClick={() => setMobileNavOpen(true)}
+                className={`block rounded-sm border p-1.5 shadow-sm lg:hidden ${darkMode ? 'border-gray-700 bg-gray-800 text-white' : 'border-stroke bg-white text-black'}`}
+                aria-label="Open menu"
+              >
+                <span className="flex flex-col items-center justify-center gap-1">
+                  <span className={`block h-0.5 w-6 rounded-full ${darkMode ? 'bg-white' : 'bg-gray-800'}`}></span>
+                  <span className={`block h-0.5 w-6 rounded-full ${darkMode ? 'bg-white' : 'bg-gray-800'}`}></span>
+                  <span className={`block h-0.5 w-6 rounded-full ${darkMode ? 'bg-white' : 'bg-gray-800'}`}></span>
+                </span>
               </button>
             </div>
 
@@ -5952,3 +6221,4 @@ const AdminDashboard = () => {
 };
 
 export default AdminDashboard;
+  

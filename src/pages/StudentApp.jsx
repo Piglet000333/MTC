@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from "framer-motion";
 import { toast, Toaster } from 'react-hot-toast';
-import { User, UserPlus, Calendar, FileCheck, Search, Eye, Users, BookOpen, Clock, AlertCircle, CheckCircle, ChevronRight, Briefcase, GraduationCap, Phone, MapPin, LogOut, Bell, ChevronDown, Settings, Mail, Camera, Save, X, Loader2, Trash2, CreditCard, Wallet, Megaphone, Sun, Moon, Award, Menu } from 'lucide-react';
+import { User, UserPlus, Calendar, FileCheck, Search, Eye, Users, BookOpen, Clock, AlertCircle, CheckCircle, ChevronRight, Briefcase, GraduationCap, Phone, MapPin, LogOut, Bell, ChevronDown, Settings, Mail, Camera, Save, X, Loader2, Trash2, CreditCard, Wallet, Megaphone, Sun, Moon, Award, Info } from 'lucide-react';
 import CustomDropdown from '../components/CustomDropdown';
 import ChatWidget from '../components/ChatWidget';
 
@@ -233,6 +233,7 @@ export default function StudentApp() {
   const [formErrors, setFormErrors] = useState({});
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successContext, setSuccessContext] = useState('');
   const [hiddenSchedules, setHiddenSchedules] = useState([]);
   const [hiddenApplications, setHiddenApplications] = useState([]);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -971,6 +972,17 @@ export default function StudentApp() {
     e.preventDefault();
     try {
       setSubmitting(true);
+      const hasChanges = Object.keys(profileForm).some(k => {
+        const a = user && user[k] !== undefined ? user[k] : '';
+        const b = profileForm[k] !== undefined ? profileForm[k] : '';
+        return String(a) !== String(b);
+      });
+      if (!hasChanges) {
+        setIsEditingProfile(false);
+        setSuccessContext('nochange');
+        setShowSuccessModal(true);
+        return;
+      }
       const res = await fetch(`/api/students/${user._id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -983,6 +995,7 @@ export default function StudentApp() {
       setUser(updatedUser);
       localStorage.setItem('studentInfo', JSON.stringify(updatedUser));
       setIsEditingProfile(false);
+      setSuccessContext('profile');
       setShowSuccessModal(true);
     } catch (err) {
       setError(err.message);
@@ -1202,6 +1215,7 @@ export default function StudentApp() {
       if (!regRes.ok) throw new Error(regData?.error || 'Failed to submit registration');
 
       setShowTerms(false);
+      setSuccessContext('registration');
       setShowSuccessModal(true);
 
       setRegistrationForm({
@@ -3747,10 +3761,26 @@ export default function StudentApp() {
         <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2 sm:py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 sm:gap-3">
-              <div className="p-1 rounded-lg bg-white ring-1 ring-black/5 shadow-sm">
-                <img src="/Logo_MTC.png" alt="MTC Logo" className="w-8 h-8 sm:w-10 sm:h-10 object-contain" />
-              </div>
-              <div>
+              <button
+                onClick={() => setMobileNavOpen(true)}
+                className={`md:hidden p-2 sm:p-2 rounded-lg transition transform hover:-translate-y-0.5 bg-transparent`}
+                aria-label="Open menu"
+              >
+                <span className="relative flex flex-col items-center justify-center gap-[3px] sm:gap-1">
+                  <span className={`block h-0.5 w-5 sm:w-5 rounded-full ${darkMode ? 'bg-white' : 'bg-gray-800'}`}></span>
+                  <span className={`block h-0.5 w-5 sm:w-5 rounded-full ${darkMode ? 'bg-white' : 'bg-gray-800'}`}></span>
+                  <span className={`block h-0.5 w-5 sm:w-5 rounded-full ${darkMode ? 'bg-white' : 'bg-gray-800'}`}></span>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setActiveSection('dashboard'); setActiveSubSection(''); }}
+                className="p-0.5 sm:p-1 rounded-lg bg-white ring-1 ring-black/5 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                aria-label="Go to dashboard"
+              >
+                <img src="/Logo_MTC.png" alt="MTC Logo" className="w-7 h-7 sm:w-10 sm:h-10 object-contain" />
+              </button>
+              <div className="hidden sm:block">
                 <h1 className={`text-base sm:text-lg font-bold leading-none ${darkMode ? 'text-white' : 'text-gray-900'}`}>Mechatronic Training Corporation</h1>
                 <p className={`hidden sm:block text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Student Portal</p>
               </div>
@@ -3758,17 +3788,10 @@ export default function StudentApp() {
             
             <div className="flex items-center gap-3 sm:gap-4">
               <button
-                onClick={() => setMobileNavOpen(true)}
-                className={`md:hidden p-1.5 sm:p-2 rounded-full transition-colors ${darkMode ? 'bg-gray-800 text-white hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                aria-label="Open menu"
-              >
-                <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
-              </button>
-              <button
                 onClick={() => setDarkMode(!darkMode)}
-                className={`p-1.5 sm:p-2 rounded-full transition-colors ${darkMode ? 'bg-gray-800 text-yellow-400 hover:bg-gray-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                className={`p-1.5 sm:p-2 rounded-lg transition-colors ${darkMode ? 'bg-gray-800 text-yellow-400 hover:bg-gray-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
               >
-                {darkMode ? <Sun className="w-4 h-4 sm:w-5 sm:h-5" /> : <Moon className="w-4 h-4 sm:w-5 sm:h-5" />}
+                {darkMode ? <Sun className="w-5 h-5 sm:w-5 sm:h-5" /> : <Moon className="w-5 h-5 sm:w-5 sm:h-5" />}
               </button>
               {user ? (
                 <>
@@ -3780,9 +3803,9 @@ export default function StudentApp() {
                         // Optional: Mark all as read when opening, or let user click "Mark all as read"
                         // For better UX, we usually keep them unread until interaction, but here we can just show them.
                       }}
-                      className={`relative p-2 rounded-full transition-colors focus:outline-none ${darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-500 hover:bg-gray-100'}`}
+                      className={`relative p-1.5 sm:p-2 rounded-lg transition-colors focus:outline-none ${darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-500 hover:bg-gray-100'}`}
                     >
-                      <Bell className="w-6 h-6" />
+                      <Bell className="w-6 h-6 sm:w-6 sm:h-6" />
                       {unreadCount > 0 && (
                         <span className={`absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 ${darkMode ? 'border-gray-900' : 'border-white'} animate-pulse`}></span>
                       )}
@@ -3799,7 +3822,7 @@ export default function StudentApp() {
                             initial={{ opacity: 0, y: 10, scale: 0.95 }}
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                            className={`absolute right-0 top-full mt-2 w-80 md:w-96 rounded-xl shadow-xl overflow-hidden z-20 border ${darkMode ? 'bg-[#0f172a] border-gray-700' : 'bg-white border-gray-100'}`}
+                            className={`absolute right-0 top-full mt-2 w-72 sm:w-80 md:w-96 rounded-xl shadow-xl overflow-hidden z-20 border ${darkMode ? 'bg-[#0f172a] border-gray-700' : 'bg-white border-gray-100'}`}
                           >
                             <div className={`px-4 py-3 border-b flex justify-between items-center ${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-gray-50 border-gray-100'}`}>
                               <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Notifications</h3>
@@ -3882,17 +3905,13 @@ export default function StudentApp() {
                   <div className="relative">
                     <button 
                       onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
-                      className={`flex items-center gap-3 p-2 rounded-xl transition-all border ${
-                        darkMode 
-                          ? 'hover:bg-gray-800 hover:border-gray-700 border-transparent' 
-                          : 'hover:bg-gray-50 hover:border-gray-200 border-transparent'
-                      }`}
+                      className={`flex items-center gap-3 p-2 rounded-xl transition-all border ${darkMode ? 'hover:bg-gray-800 hover:border-gray-700 border-transparent' : 'hover:bg-gray-50 hover:border-gray-200 border-transparent'}`}
                     >
                       <div className="text-right hidden sm:block">
                         <p className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{user.firstName} {user.lastName}</p>
                         <p className={`text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Student</p>
                       </div>
-                      <div className={`w-10 h-10 rounded-full border-2 overflow-hidden flex-shrink-0 ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gray-100'}`}>
+                      <div className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl border-2 overflow-hidden flex-shrink-0 ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gray-100'}`}>
                         {user.profilePicture ? (
                           <img src={user.profilePicture} alt="Profile" className="w-full h-full object-cover" />
                         ) : (
@@ -3901,7 +3920,7 @@ export default function StudentApp() {
                           </div>
                         )}
                       </div>
-                      <ChevronDown className={`w-4 h-4 transition-transform ${darkMode ? 'text-gray-500' : 'text-gray-400'} ${isProfileDropdownOpen ? 'rotate-180' : ''}`} />
+                      <ChevronDown className={`w-5 h-5 transition-transform ${darkMode ? 'text-gray-500' : 'text-gray-400'} ${isProfileDropdownOpen ? 'rotate-180' : ''}`} />
                     </button>
 
                     {/* Dropdown Menu */}
@@ -4043,7 +4062,7 @@ export default function StudentApp() {
         )}
       </AnimatePresence>
 
-      {/* Navigation */}
+      {/* Desktop Navigation (Top Tabs) */}
       <div className={`hidden md:block shadow-sm border-b transition-colors duration-300 ${darkMode ? 'bg-[#0f172a] border-gray-800' : 'bg-white border-gray-100'}`}>
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex gap-2">
@@ -4123,18 +4142,40 @@ export default function StudentApp() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50 backdrop-blur-sm">
           <div className={`rounded-lg shadow-xl w-full max-w-md p-6 animate-in fade-in zoom-in duration-200 ${darkMode ? 'bg-[#0f172a] border border-gray-700' : 'bg-white'}`}>
             <div className="flex flex-col items-center text-center">
-              <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 ${darkMode ? 'bg-green-900/30' : 'bg-green-100'}`}>
-                <CheckCircle className={`w-8 h-8 ${darkMode ? 'text-green-400' : 'text-green-600'}`} />
+              <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 ${
+                (successContext === 'profile' || successContext === 'nochange')
+                  ? (darkMode ? 'bg-blue-900/30' : 'bg-blue-100')
+                  : (darkMode ? 'bg-green-900/30' : 'bg-green-100')
+              }`}>
+                {successContext === 'profile' ? (
+                  <Save className={`w-8 h-8 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
+                ) : successContext === 'nochange' ? (
+                  <Info className={`w-8 h-8 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
+                ) : (
+                  <CheckCircle className={`w-8 h-8 ${darkMode ? 'text-green-400' : 'text-green-600'}`} />
+                )}
               </div>
               <h3 className={`text-xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                {activeSection === 'assessment' ? 'Application Submitted!' : 'Registration Successful!'}
+                {successContext === 'profile'
+                  ? 'Profile Updated!'
+                  : successContext === 'nochange'
+                  ? 'Nothing Changed'
+                  : (activeSection === 'assessment' ? 'Application Submitted!' : 'Registration Successful!')}
               </h3>
               <p className={`mb-6 text-lg ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                Your application has been submitted successfully.
+                {successContext === 'profile'
+                  ? 'Your profile has been updated successfully.'
+                  : successContext === 'nochange'
+                  ? 'No updates were detected in your profile.'
+                  : 'Your application has been submitted successfully.'}
               </p>
               <button
-                onClick={() => setShowSuccessModal(false)}
-                className={`w-full px-6 py-3 rounded-lg transition font-semibold text-lg ${darkMode ? 'bg-green-600 hover:bg-green-500 text-white' : 'bg-green-600 hover:bg-green-700 text-white'}`}
+                onClick={() => { setShowSuccessModal(false); setSuccessContext(''); }}
+                className={`w-full px-6 py-3 rounded-lg transition font-semibold text-lg ${
+                  (successContext === 'profile' || successContext === 'nochange')
+                    ? (darkMode ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white')
+                    : (darkMode ? 'bg-green-600 hover:bg-green-500 text-white' : 'bg-green-600 hover:bg-green-700 text-white')
+                }`}
               >
                 Continue
               </button>
