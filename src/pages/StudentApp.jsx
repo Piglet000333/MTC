@@ -237,6 +237,7 @@ export default function StudentApp() {
   const [hiddenApplications, setHiddenApplications] = useState([]);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [showSessionExpiredModal, setShowSessionExpiredModal] = useState(false);
+  const idleTimerRef = React.useRef(null);
   const authedFetch = async (input, init = {}) => {
     const token = localStorage.getItem('studentToken');
     const headers = {
@@ -261,6 +262,27 @@ export default function StudentApp() {
     const handler = () => setShowSessionExpiredModal(true);
     window.addEventListener('studentSessionExpired', handler);
     return () => window.removeEventListener('studentSessionExpired', handler);
+  }, []);
+  useEffect(() => {
+    const IDLE_MS = 30 * 60 * 1000;
+    const reset = () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = setTimeout(() => {
+        setShowSessionExpiredModal(true);
+        try { localStorage.removeItem('studentToken'); } catch {}
+        try { localStorage.removeItem('studentInfo'); } catch {}
+      }, IDLE_MS);
+    };
+    const onVis = () => { if (!document.hidden) reset(); };
+    const events = ['mousemove','keydown','click','scroll','touchstart'];
+    events.forEach(ev => window.addEventListener(ev, reset));
+    document.addEventListener('visibilitychange', onVis);
+    reset();
+    return () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      events.forEach(ev => window.removeEventListener(ev, reset));
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, []);
   const phToday = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Manila',

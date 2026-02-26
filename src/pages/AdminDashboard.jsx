@@ -134,6 +134,8 @@ const AdminDashboard = () => {
   const [conversationMenuOpen, setConversationMenuOpen] = useState(null);
   const [showStudentProfileModal, setShowStudentProfileModal] = useState(false);
   const [studentProfileData, setStudentProfileData] = useState(null);
+  const idleTimerRef = React.useRef(null);
+  const lastActivityRef = React.useRef(Date.now());
 
   // Dark Mode Effect
   useEffect(() => {
@@ -203,6 +205,28 @@ const AdminDashboard = () => {
     const handler = () => setShowSessionExpiredModal(true);
     window.addEventListener('adminSessionExpired', handler);
     return () => window.removeEventListener('adminSessionExpired', handler);
+  }, []);
+  useEffect(() => {
+    const IDLE_MS = 30 * 60 * 1000;
+    const reset = () => {
+      lastActivityRef.current = Date.now();
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = setTimeout(() => {
+        setShowSessionExpiredModal(true);
+        try { localStorage.removeItem('adminToken'); } catch {}
+        try { localStorage.removeItem('adminInfo'); } catch {}
+      }, IDLE_MS);
+    };
+    const onVis = () => { if (!document.hidden) reset(); };
+    const events = ['mousemove','keydown','click','scroll','touchstart'];
+    events.forEach(ev => window.addEventListener(ev, reset));
+    document.addEventListener('visibilitychange', onVis);
+    reset();
+    return () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      events.forEach(ev => window.removeEventListener(ev, reset));
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, []);
 
   const loadConversations = React.useCallback(async () => {
