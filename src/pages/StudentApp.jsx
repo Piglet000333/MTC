@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from "framer-motion";
 import { toast, Toaster } from 'react-hot-toast';
-import { User, UserPlus, Calendar, FileCheck, Search, Eye, Users, BookOpen, Clock, AlertCircle, CheckCircle, ChevronRight, Briefcase, GraduationCap, Phone, MapPin, LogOut, Bell, ChevronDown, Settings, Mail, Camera, Save, X, Loader2, Trash2, CreditCard, Wallet, Megaphone, Sun, Moon, Award, Info } from 'lucide-react';
+import { User, UserPlus, Calendar, FileCheck, Search, Eye, Users, BookOpen, Clock, AlertCircle, CheckCircle, ChevronRight, Briefcase, GraduationCap, Phone, MapPin, LogOut, Bell, ChevronDown, Settings, Mail, Camera, Save, X, Loader2, Trash2, CreditCard, Wallet, Megaphone, Sun, Moon, Award, Info, MessageSquare } from 'lucide-react';
 import CustomDropdown from '../components/CustomDropdown';
 import ChatWidget from '../components/ChatWidget';
 
@@ -2116,14 +2116,14 @@ export default function StudentApp() {
                          transition={{ duration: 0.3 }}
                          className="overflow-hidden"
                       >
-                         <div className={`border rounded-2xl p-6 mb-6 flex flex-col md:flex-row gap-6 items-center md:items-start ${darkMode ? 'bg-blue-900/10 border-blue-900/30' : 'bg-blue-50/50 border-blue-100'}`}>
+                         <div className={`border rounded-2xl p-6 mb-6 flex flex-col sm:flex-row gap-6 items-center sm:items-start ${darkMode ? 'bg-blue-900/10 border-blue-900/30' : 'bg-blue-50/50 border-blue-100'}`}>
                             <div className="relative group cursor-zoom-in" onClick={() => paymentConfig?.qrCodeImage && setZoomedImage(paymentConfig.qrCodeImage)}>
                                <div className={`p-3 rounded-xl shadow-sm border shrink-0 ${darkMode ? 'bg-white border-blue-900' : 'bg-white border-blue-100'}`}>
                                   {/* QR Code Placeholder or Image */}
                                   {paymentConfig?.qrCodeImage ? (
-                                     <img src={paymentConfig.qrCodeImage} alt="GCash QR" className="w-32 h-32 object-contain" />
+                                     <img src={paymentConfig.qrCodeImage} alt="GCash QR" className="w-44 h-44 sm:w-40 sm:h-40 md:w-56 md:h-56 max-w-full object-contain" />
                                   ) : (
-                                     <div className="w-32 h-32 bg-gray-50 flex items-center justify-center text-xs text-center text-gray-400 rounded-lg border border-dashed border-gray-200">No QR Code</div>
+                                     <div className="w-44 h-44 sm:w-40 sm:h-40 md:w-56 md:h-56 bg-gray-50 flex items-center justify-center text-xs text-center text-gray-400 rounded-lg border border-dashed border-gray-200">No QR Code</div>
                                   )}
                                </div>
                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/5 rounded-xl">
@@ -2131,9 +2131,12 @@ export default function StudentApp() {
                                      <Eye className="w-4 h-4 text-blue-600" />
                                   </div>
                                </div>
+                              {paymentConfig?.qrCodeImage && (
+                                <p className="mt-2 text-xs text-gray-500 text-center sm:hidden">Tap QR to view full screen</p>
+                              )}
                             </div>
                             
-                            <div className="flex-1 text-center md:text-left">
+                           <div className="flex-1 text-center sm:text-left">
                                <h4 className={`font-bold text-xl mb-2 ${darkMode ? 'text-blue-400' : 'text-blue-900'}`}>Scan to Pay</h4>
                                <p className={`mb-4 leading-relaxed ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>
                                   Please scan the QR code or send the exact amount to the GCash number below. 
@@ -2698,12 +2701,27 @@ export default function StudentApp() {
         }
       };
 
+      const token = localStorage.getItem('studentToken') || '';
       const res = await fetch('/api/assessment-applications', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
         body: JSON.stringify(payload)
       });
-      if (!res.ok) throw new Error('Failed to submit application');
+      if (res.status === 401) {
+        setShowSessionExpiredModal(true);
+        throw new Error('Your session has expired. Please log in again.');
+      }
+      if (!res.ok) {
+        let msg = 'Failed to submit application';
+        try { 
+          const j = await res.json();
+          if (j?.error) msg = j.error;
+        } catch {}
+        throw new Error(msg);
+      }
       
       setAssessmentStep(3); // Show Instructions immediately
       loadData(); // Refresh list in background
@@ -3473,13 +3491,13 @@ export default function StudentApp() {
                      
                     <div className="w-full">
                       <div className={`mx-auto max-w-2xl border rounded-2xl p-4 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-blue-200'}`}>
-                        <div className="flex items-center gap-6">
+                        <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6 text-center sm:text-left">
                           <div className="relative group cursor-zoom-in" onClick={() => paymentConfig?.qrCodeImage && setZoomedImage(paymentConfig.qrCodeImage)}>
                             <div className={`p-3 rounded-xl shadow-sm border shrink-0 ${darkMode ? 'bg-white border-blue-900' : 'bg-white border-blue-100'}`}>
                               {paymentConfig?.qrCodeImage ? (
-                                <img src={paymentConfig.qrCodeImage} alt="GCash QR" className="w-28 h-28 md:w-32 md:h-32 object-contain" />
+                                <img src={paymentConfig.qrCodeImage} alt="GCash QR" className="w-48 h-48 sm:w-40 sm:h-40 md:w-56 md:h-56 max-w-full object-contain" />
                               ) : (
-                                <div className="w-28 h-28 md:w-32 md:h-32 bg-gray-50 flex items-center justify-center text-xs text-center text-gray-400 rounded-lg border border-dashed border-gray-200">No QR Code</div>
+                                <div className="w-48 h-48 sm:w-40 sm:h-40 md:w-56 md:h-56 bg-gray-50 flex items-center justify-center text-xs text-center text-gray-400 rounded-lg border border-dashed border-gray-200">No QR Code</div>
                               )}
                             </div>
                             {paymentConfig?.qrCodeImage && (
@@ -3815,14 +3833,15 @@ export default function StudentApp() {
                       {showNotifications && (
                         <>
                           <div 
-                            className="fixed inset-0 z-10 cursor-default" 
+                            className="fixed inset-0 z-40 cursor-default" 
                             onClick={() => setShowNotifications(false)}
                           />
+                          {/* Desktop popover */}
                           <motion.div 
                             initial={{ opacity: 0, y: 10, scale: 0.95 }}
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                            className={`absolute right-0 top-full mt-2 w-72 sm:w-80 md:w-96 rounded-xl shadow-xl overflow-hidden z-20 border ${darkMode ? 'bg-[#0f172a] border-gray-700' : 'bg-white border-gray-100'}`}
+                            className={`hidden md:block absolute right-0 top-full mt-2 w-72 sm:w-80 md:w-96 rounded-xl shadow-xl overflow-hidden z-50 border ${darkMode ? 'bg-[#0f172a] border-gray-700' : 'bg-white border-gray-100'}`}
                           >
                             <div className={`px-4 py-3 border-b flex justify-between items-center ${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-gray-50 border-gray-100'}`}>
                               <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Notifications</h3>
@@ -3837,7 +3856,6 @@ export default function StudentApp() {
                                 )}
                               </div>
                             </div>
-                            
                             <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
                               {notifications.length === 0 ? (
                                 <div className={`p-8 text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -3897,10 +3915,97 @@ export default function StudentApp() {
                                </button>
                             </div>
                           </motion.div>
+                          {/* Mobile bottom-sheet */}
+                          <motion.div 
+                            initial={{ y: '100%' }}
+                            animate={{ y: 0 }}
+                            exit={{ y: '100%' }}
+                            transition={{ type: 'spring', bounce: 0.08, duration: 0.3 }}
+                            className={`md:hidden fixed bottom-0 left-0 right-0 z-50 rounded-t-2xl border-t ${darkMode ? 'bg-[#0f172a] border-gray-800' : 'bg-white border-gray-200 shadow-lg'}`}
+                          >
+                            <div className="flex items-center justify-between p-4">
+                              <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Notifications</h3>
+                              <button
+                                onClick={() => setShowNotifications(false)}
+                                className={`p-2 rounded-full ${darkMode ? 'hover:bg-gray-800 text-gray-300' : 'hover:bg-gray-100 text-gray-600'}`}
+                                aria-label="Close notifications"
+                              >
+                                <X className="w-5 h-5" />
+                              </button>
+                            </div>
+                            <div className="max-h-[55vh] overflow-y-auto custom-scrollbar px-2">
+                              {notifications.length === 0 ? (
+                                <div className={`p-8 text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                  <Bell className={`w-8 h-8 mx-auto mb-2 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`} />
+                                  <p className="text-sm">No notifications yet</p>
+                                </div>
+                              ) : (
+                                <div className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-100'}`}>
+                                  {notifications.map(notification => (
+                                    <div 
+                                      key={notification._id} 
+                                      className={`p-4 transition-colors cursor-pointer ${darkMode ? 'hover:bg-gray-800/50' : 'hover:bg-gray-50'} ${!notification.isRead ? (darkMode ? 'bg-blue-900/10' : 'bg-blue-50/50') : ''}`}
+                                      onClick={() => {
+                                        if(!notification.isRead) handleMarkRead(notification._id);
+                                        setActiveSection('notifications');
+                                        setShowNotifications(false);
+                                      }}
+                                    >
+                                      <div className="flex gap-3">
+                                        <div className={`mt-1 p-1.5 rounded-full shrink-0 ${
+                                          notification.type === 'success' ? (darkMode ? 'bg-green-900/30 text-green-400' : 'bg-green-100 text-green-600') :
+                                          notification.type === 'error' ? (darkMode ? 'bg-red-900/30 text-red-400' : 'bg-red-100 text-red-600') :
+                                          notification.type === 'warning' ? (darkMode ? 'bg-yellow-900/30 text-yellow-400' : 'bg-yellow-100 text-yellow-600') :
+                                          (darkMode ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-100 text-blue-600')
+                                        }`}>
+                                          {notification.type === 'success' ? <CheckCircle className="w-4 h-4" /> :
+                                           notification.type === 'error' ? <AlertCircle className="w-4 h-4" /> :
+                                           notification.type === 'warning' ? <AlertCircle className="w-4 h-4" /> :
+                                           <Bell className="w-4 h-4" />}
+                                        </div>
+                                        <div className="flex-1">
+                                          <p className={`text-sm ${!notification.isRead ? (darkMode ? 'font-semibold text-white' : 'font-semibold text-gray-900') : (darkMode ? 'text-gray-300' : 'text-gray-700')}`}>
+                                            {notification.message.length > 50 ? notification.message.substring(0, 50) + '...' : notification.message}
+                                          </p>
+                                          <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-400'}`}>
+                                            {new Date(notification.createdAt).toLocaleDateString()} • {new Date(notification.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                          </p>
+                                        </div>
+                                        {!notification.isRead && (
+                                          <div className={`w-2 h-2 rounded-full mt-2 ${darkMode ? 'bg-blue-400' : 'bg-blue-500'}`}></div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            <div className={`p-3 border-t ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-100 bg-gray-50'}`}>
+                              <button 
+                                onClick={() => {
+                                  setActiveSection('notifications');
+                                  setShowNotifications(false);
+                                }}
+                                className={`w-full py-2 text-sm text-center font-medium rounded-lg transition-colors ${darkMode ? 'text-blue-400 hover:bg-gray-800' : 'text-blue-600 hover:bg-blue-50'}`}
+                              >
+                                View All Notifications
+                              </button>
+                            </div>
+                          </motion.div>
                         </>
                       )}
                     </AnimatePresence>
                   </div>
+                  
+                  {/* Divider and Mobile Chat trigger */}
+                  <div className="md:hidden h-6 w-px bg-gray-200 dark:bg-gray-700" />
+                  <button
+                    onClick={() => window.dispatchEvent(new Event('openStudentChat'))}
+                    className={`md:hidden p-2 rounded-xl border relative ${darkMode ? 'border-white/10 text-gray-200 bg-white/5 hover:bg-white/10' : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50'}`}
+                    aria-label="Open chat"
+                  >
+                    <MessageSquare className="w-5 h-5" />
+                  </button>
 
                   <div className="relative">
                     <button 
@@ -3984,6 +4089,13 @@ export default function StudentApp() {
                 </>
               ) : (
                 <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => window.dispatchEvent(new Event('openStudentChat'))}
+                    className={`md:hidden p-2 rounded-xl border relative ${darkMode ? 'border-white/10 text-gray-200 bg-white/5 hover:bg-white/10' : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50'}`}
+                    aria-label="Open chat"
+                  >
+                    <MessageSquare className="w-5 h-5" />
+                  </button>
                   <a href="/student/login" className={`text-sm font-medium px-3 py-2 rounded-lg transition-colors ${darkMode ? 'text-gray-300 hover:text-blue-300 hover:bg-gray-800' : 'text-gray-600 hover:text-blue-600 hover:bg-gray-50'}`}>
                     Log in
                   </a>

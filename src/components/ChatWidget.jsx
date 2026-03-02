@@ -231,7 +231,7 @@ export default function ChatWidget({ darkMode }) {
     <>
       <button
         onClick={() => setOpen(o => !o)}
-        className={`fixed bottom-24 right-3 sm:bottom-5 sm:right-5 z-[2147483647] w-14 h-14 rounded-2xl flex items-center justify-center transition-transform duration-200 hover:scale-105 active:scale-95
+        className={`hidden sm:flex fixed bottom-5 right-5 z-[2147483647] w-14 h-14 rounded-2xl items-center justify-center transition-transform duration-200 hover:scale-105 active:scale-95
           ${open
             ? (darkMode 
                 ? 'bg-gradient-to-br from-indigo-700 to-blue-700 shadow-blue-900/40' 
@@ -254,14 +254,26 @@ export default function ChatWidget({ darkMode }) {
         )}
       </button>
       {open && (
+        <>
+        {/* Mobile backdrop with blur */}
+        <div 
+          className="sm:hidden fixed inset-0 z-[2147483646] bg-black/30 backdrop-blur-sm"
+          onClick={() => setOpen(false)}
+        />
         <div
-          className={`fixed bottom-40 right-3 sm:bottom-20 sm:right-5 max-w-[calc(100vw-1.5rem)] w-[360px] max-h-[70vh] rounded-3xl overflow-hidden flex flex-col z-[2147483647]
+          className={`fixed z-[2147483647] overflow-hidden flex flex-col
+            sm:bottom-20 sm:right-5 sm:max-w-[360px] sm:w-[360px] sm:max-h-[70vh] sm:rounded-3xl sm:border
+            inset-x-0 bottom-0 sm:inset-auto sm:bottom-20 sm:right-5
             ${darkMode ? 'bg-[#0f172a]' : 'bg-white'}
-            ${darkMode ? 'shadow-[0_32px_80px_rgba(2,6,23,0.8)]' : 'shadow-[0_32px_80px_rgba(0,0,0,0.25)]'} border ${darkMode ? 'border-gray-800' : 'border-gray-100'}`}
+            ${darkMode ? 'shadow-[0_32px_80px_rgba(2,6,23,0.8)]' : 'shadow-[0_32px_80px_rgba(0,0,0,0.25)]'} 
+            ${darkMode ? 'border-gray-800' : 'border-gray-100'}
+            sm:animate-none animate-slideUp`}
+          style={{ maxHeight: '75vh', borderTopLeftRadius: '20px', borderTopRightRadius: '20px' }}
         >
-          <div className={`px-4 py-3 border-b relative bg-gradient-to-r ${
+          <div className={`px-4 pt-6 pb-3 border-b relative bg-gradient-to-r rounded-t-[20px] ${
             darkMode ? 'from-blue-900 to-indigo-900 border-gray-800' : 'from-blue-600 to-indigo-600 border-blue-700/20'
           }`}>
+            <div className="sm:hidden absolute left-1/2 top-2 -translate-x-1/2 h-1.5 w-10 rounded-full bg-white/60" />
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl overflow-hidden border border-white/10 bg-white/10">
@@ -401,6 +413,7 @@ export default function ChatWidget({ darkMode }) {
             </button>
           </div>
         </div>
+        </>
       )}
       {zoomImage && (
         <div 

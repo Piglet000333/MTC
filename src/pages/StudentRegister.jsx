@@ -56,8 +56,11 @@ export default function StudentRegister() {
     }
   }, []);
 
+  const [googleBtnDisabled, setGoogleBtnDisabled] = useState(false);
+
   const googleLogin = useGoogleLogin({
     onSuccess: async (tokenResponse) => {
+      setError(''); // Clear any previous errors
       try {
         setLoading(true);
         const response = await fetch('/api/students/google-login', {
@@ -77,13 +80,30 @@ export default function StudentRegister() {
         localStorage.setItem('studentInfo', JSON.stringify(data.student));
         navigate('/');
       } catch (err) {
+        console.error('Google login error:', err);
         setError(err.message);
       } finally {
         setLoading(false);
       }
     },
-    onError: () => setError('Google login failed'),
+    onError: (errorResponse) => {
+      console.error('Google Login Failed:', errorResponse);
+      setError('Google login failed. Please try again.');
+    },
+    onNonOAuthError: (nonOAuthError) => {
+      console.error('Google Non-OAuth Error:', nonOAuthError);
+      setError('Google Sign-In unavailable. Please check your connection or browser settings.');
+    },
+    flow: 'implicit', // Explicitly set flow to implicit (default)
   });
+
+  const handleGoogleClick = () => {
+    setError('');
+    setGoogleBtnDisabled(true);
+    googleLogin();
+    // Re-enable after 3 seconds to prevent double-click but allow retry if popup closed
+    setTimeout(() => setGoogleBtnDisabled(false), 3000);
+  };
 
   React.useEffect(() => {
     let timer;
@@ -486,8 +506,9 @@ export default function StudentRegister() {
 
               <button
                 type="button"
-                onClick={() => googleLogin()}
-                className="w-full flex justify-center py-3 px-4 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm bg-white dark:bg-gray-700 text-sm font-medium text-gray-700 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors items-center gap-2"
+                onClick={handleGoogleClick}
+                disabled={loading || googleBtnDisabled}
+                className="w-full flex justify-center py-3 px-4 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm bg-white dark:bg-gray-700 text-sm font-medium text-gray-700 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <img className="h-5 w-5" src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" />
                 <span>Sign up with Google</span>
