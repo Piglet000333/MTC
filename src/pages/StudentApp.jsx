@@ -3799,7 +3799,7 @@ export default function StudentApp() {
                 <img src="/Logo_MTC.png" alt="MTC Logo" className="w-7 h-7 sm:w-10 sm:h-10 object-contain" />
               </button>
               <div className="hidden sm:block">
-                <h1 className={`text-base sm:text-lg font-bold leading-none ${darkMode ? 'text-white' : 'text-gray-900'}`}>Mechatronic Training Corporation</h1>
+                <h1 className={`text-base sm:text-lg font-bold leading-none ${darkMode ? 'text-white' : 'text-gray-900'}`}>Mechatronics Technologies Corporation</h1>
                 <p className={`hidden sm:block text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Student Portal</p>
               </div>
             </div>

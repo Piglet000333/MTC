@@ -155,7 +155,7 @@ const getOTPEmailTemplate = (otpCode) => {
         <a href="#">Unsubscribe</a>
       </div>
       <p class="footer-text" style="margin-top: 20px;">
-        &copy; ${new Date().getFullYear()} Mechatronic Training Corporation. All rights reserved.
+        &copy; ${new Date().getFullYear()} Mechatronics Technologies Corporation. All rights reserved.
       </p>
     </div>
   </div>
@@ -316,7 +316,7 @@ const getForgotPasswordEmailTemplate = (resetLink) => {
         <a href="#">Unsubscribe</a>
       </div>
       <p class="footer-text" style="margin-top: 20px;">
-        &copy; ${new Date().getFullYear()} Mechatronic Training Corporation. All rights reserved.
+        &copy; ${new Date().getFullYear()} Mechatronics Technologies Corporation. All rights reserved.
       </p>
     </div>
   </div>

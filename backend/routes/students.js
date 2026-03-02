@@ -150,7 +150,7 @@ router.post('/resend-code', async (req, res) => {
     await student.save();
 
     const mailOptions = {
-      from: `"Mechatronic Training Corp" <${process.env.EMAIL_USER}>`,
+      from: `"Mechatronics Technologies Corporation" <${process.env.EMAIL_USER}>`,
       to: student.email,
       subject: 'Verify your Student Portal Account',
       html: getOTPEmailTemplate(verificationCode)
@@ -198,7 +198,7 @@ router.post('/forgot-password', async (req, res) => {
     const resetLink = `${frontendUrl}/student/reset-password/${resetToken}`;
 
     const mailOptions = {
-      from: `"Mechatronic Training Corp" <${process.env.EMAIL_USER}>`,
+      from: `"Mechatronics Technologies Corporation" <${process.env.EMAIL_USER}>`,
       to: student.email,
       subject: 'Password Reset Request',
       html: getForgotPasswordEmailTemplate(resetLink)
@@ -320,7 +320,7 @@ router.post('/', async (req, res) => {
 
             // Send Email
             const mailOptions = {
-                from: `"Mechatronic Training Corp" <${process.env.EMAIL_USER}>`,
+                from: `"Mechatronics Technologies Corporation" <${process.env.EMAIL_USER}>`,
                 to: existingStudent.email,
                 subject: 'Verify your Student Portal Account',
                 html: getOTPEmailTemplate(verificationCode)
@@ -357,7 +357,7 @@ router.post('/', async (req, res) => {
 
     // Send Verification Email
     const mailOptions = {
-      from: `"Mechatronic Training Corp" <${process.env.EMAIL_USER}>`,
+      from: `"Mechatronics Technologies Corporation" <${process.env.EMAIL_USER}>`,
       to: pendingStudent.email,
       subject: 'Verify your Student Portal Account',
       html: getOTPEmailTemplate(verificationCode)

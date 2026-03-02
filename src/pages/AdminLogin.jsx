@@ -124,7 +124,7 @@ export default function AdminLogin() {
             
             <div className="bg-gray-50/50 border-t border-gray-100 p-4 text-center">
                 <p className="text-xs text-gray-400 font-medium">
-                    &copy; {new Date().getFullYear()} Mechatronic Training Corporation
+                    &copy; {new Date().getFullYear()} Mechatronics Technologies Corporation
                 </p>
             </div>
         </div>
