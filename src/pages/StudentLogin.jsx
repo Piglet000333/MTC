@@ -150,7 +150,7 @@ export default function StudentLogin() {
               <div className="bg-white p-1 rounded-lg border border-gray-100 shadow-sm">
                 <img src="/Logo_MTC.png" alt="MTC Logo" className="w-12 h-12 object-contain" />
               </div>
-              <span className="text-gray-900 dark:text-white">Mechatronics Technologies Corporation</span>
+              <span className="hidden md:inline text-gray-900 dark:text-white">Mechatronics Technologies Corporation</span>
             </div>
             <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Welcome back</h2>
             <p className="text-sm text-gray-600 dark:text-gray-400">
