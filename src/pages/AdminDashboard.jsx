@@ -4597,7 +4597,7 @@ const AdminDashboard = () => {
             { 
               id: 'schedules', 
               icon: Calendar, 
-              label: 'Schedules',
+              label: 'Paid Training',
               subItems: [
                 { id: '', label: 'Schedule Management' },
                 { id: 'students', label: 'Students' },
@@ -4727,7 +4727,7 @@ const AdminDashboard = () => {
                 <div className="grid grid-cols-1 gap-2">
                   {[
                     { id: 'dashboard', icon: Home, label: 'Dashboard' },
-                    { id: 'schedules', icon: Calendar, label: 'Schedules' },
+                    { id: 'schedules', icon: Calendar, label: 'Paid Training' },
                     { id: 'assessments', icon: Award, label: 'Assessments' },
                     { id: 'announcements', icon: Megaphone, label: 'Announcements' },
                     { id: 'sales-reports', icon: TrendingUp, label: 'Sales Reports' },
